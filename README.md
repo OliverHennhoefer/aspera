@@ -1,72 +1,100 @@
-# Native Codex Orchestrator
+# aspera-orchestrator
 
-Open-source plugin implementation for the Codex ecosystem, usable directly from this repository.
+Lightweight, deterministic Codex orchestration with bounded role packets.
 
-Lightweight Codex orchestrator plugin for a deterministic, structured task flow using an explicit task format:
-`spark`-backed `spark_explorer`, `spark_worker`, and `spark_verifier`, `luna_researcher` for docs/spec checks, and `terra-reviewer` for risk gates.
+- Status: initial `0.1.0` release candidate; capability and cost gates are pending.
+- Compatibility assumption: the newest Codex generation only.
+- Last validated baseline: Codex `0.147.0-alpha.6.5` on 2026-08-08.
+- Requirements: Bash 3.2+, Python 3.11+, and the required Codex model entitlements.
 
-## Install into another project
+The goal is comparable correctness at lower total cost than asking Sol `high` to perform the whole task. Sol remains the architecture and acceptance parent; Spark, Luna, and Terra handle bounded work.
 
-```bash
-bash plugins/orchestrator/scripts/install-agents.sh /path/to/other-project
-bash plugins/orchestrator/scripts/install-agents.sh --with-session-template /path/to/other-project
-bash plugins/orchestrator/scripts/doctor.sh /path/to/other-project
-```
+## Install commands
 
-Deterministic session-template bootstrap (single command):
+Marketplace:
 
 ```bash
-PLUGIN_REPO=/path/to/this-plugin-repo
-TARGET_REPO=/path/to/other-project
-bash "$PLUGIN_REPO/plugins/orchestrator/scripts/install-agents.sh" --with-session-template "$TARGET_REPO"
+codex plugin marketplace add <repo-root>
+codex plugin add aspera-orchestrator@aspera
 ```
 
-Run `doctor.sh` afterward to verify health:
+Source:
 
 ```bash
-bash "$PLUGIN_REPO/plugins/orchestrator/scripts/doctor.sh" "$TARGET_REPO"
+bash plugins/aspera-orchestrator/skills/setup/scripts/install.sh --profile spark <target-root>
+bash plugins/aspera-orchestrator/skills/setup/scripts/install.sh --profile spark --install-policy <target-root>
 ```
 
-## Install modes
+Replace `--profile spark` with `--profile luna` for Luna mode.
 
-- Default mode (lightweight, plugin runtime):
-  - Installs `.codex/agents/*.toml`.
-  - Creates `.codex/config.toml` only if missing.
-  - Keeps existing `.codex/config.toml` in place.
+`--install-policy` adds or updates a marked block in the target's root `AGENTS.md`. Use `--dry-run` to preview and `--force` only after reviewing a reported drift conflict.
 
-- Session-template mode:
-  - `bash plugins/orchestrator/scripts/install-agents.sh --with-session-template /path/to/other-project`
-  - Installs role files and overwrites `.codex/config.toml` from
-    `plugins/orchestrator/templates/session-config.toml.example`.
-  - In this mode, the README `AGENTS.md` addition for this project is optional.
+Doctor:
 
-## Installed runtime files
-
-- `.codex/config.toml`
-- `.codex/agents/spark-explorer.toml`
-- `.codex/agents/spark-worker.toml`
-- `.codex/agents/spark-verifier.toml`
-- `.codex/agents/terra-reviewer.toml`
-- `.codex/agents/luna-researcher.toml`
-
-## Minimal `AGENTS.md` hint for target project
-
-By default, add this (or equivalent) to the target project’s `AGENTS.md` so the policy is discoverable to the main session:
-
-```md
-Use a fixed explicit task format for implementation work.
-Required task packet keys:
-TASK_ID, OBJECTIVE, OWNED_PATHS, READ_ONLY_CONTEXT, INTERFACE_CONTRACTS, CONSTRAINTS, NON_GOALS, IMPLEMENTATION_STEPS, VERIFICATION, STOP_CONDITIONS, HANDOFF_FORMAT.
-
-Roles: spark_explorer, spark_worker, spark_verifier, luna_researcher, terra-reviewer.
-Escalate risk-sensitive work to `terra-reviewer`.
+```bash
+bash plugins/aspera-orchestrator/skills/setup/scripts/doctor.sh <target-root>
+bash plugins/aspera-orchestrator/skills/setup/scripts/doctor.sh --profile spark <target-root>
+bash plugins/aspera-orchestrator/skills/setup/scripts/doctor.sh --runtime-smoke --profile spark <target-root>
 ```
 
-## Optional: skip AGENTS.md if you use session-template mode
+Uninstall:
 
-If you installed with `--with-session-template`, you can use `plugins/orchestrator/templates/session-config.toml.example` as `.codex/config.toml` in the target workspace (or merge equivalent fields into an existing `.codex/config.toml`).
-In that case, main-session policy is carried by the session config and the `AGENTS.md` snippet is optional.
+```bash
+bash plugins/aspera-orchestrator/skills/setup/scripts/uninstall.sh <target-root>
+bash plugins/aspera-orchestrator/skills/setup/scripts/uninstall.sh --dry-run <target-root>
+bash plugins/aspera-orchestrator/skills/setup/scripts/uninstall.sh --force <target-root>
+```
 
-Notes:
-- Use only this template if your target project allows changing its main Codex session config.
-- Ensure the template’s keys remain valid for your Codex/runtime version (`model_reasoning_effort`/features/agent blocks vary by version).
+## Runtime entrypoint
+
+`$aspera-orchestrator:orchestrate`
+
+Use exact schema from `AGENTS.md` for role packets.
+
+## Modes
+
+- Direct: parent-only, no delegation.
+- Express: one `aspera_worker`; add `aspera_verifier` for behavioral, multi-file, public-contract, or failed-worker cases.
+- Standard: up to 3 `aspera_explorer` packets in parallel, then disjoint `aspera_worker` batches.
+
+## Roles and models
+
+- Spark profile:
+  - `aspera_explorer`, `aspera_worker`, `aspera_verifier`: `gpt-5.3-codex-spark`, `xhigh`
+  - `aspera_researcher`: `gpt-5.6-luna`, `max`
+  - `aspera_reviewer`: `gpt-5.6-terra`, `high`
+- Luna profile:
+  - `aspera_explorer`, `aspera_worker`, `aspera_verifier`: `gpt-5.6-luna`, `max`
+  - `aspera_researcher`: `gpt-5.6-luna`, `max`
+  - `aspera_reviewer`: `gpt-5.6-terra`, `high`
+
+Spark is a Pro research preview with separate usage limits. Missing models or effort levels block installation; there is no silent substitution or downgrade.
+
+## Safety boundary
+
+- Never edits `.codex/config.toml`.
+- Runtime-owned artifacts include `.codex/agents/aspera-*.toml` and `.codex/aspera-orchestrator/state.json`.
+- Optional policy markers live in root `AGENTS.md`.
+- Delegated roles use isolated, task-local context; delegation is non-recursive and each path has one writer.
+- The parent owns architecture, reruns decisive checks, and makes final acceptance decisions.
+- `bash tests/run.sh` is part of normal CI and must run with no paid model calls.
+
+`doctor.sh --runtime-smoke` is the only quota-consuming setup check. It is explicit, limited to 120 seconds, prints captured output/usage, and must return `ASPERA_SMOKE_OK`.
+
+## Capability and cost evaluation
+
+Run identical fixed tasks once with Sol `high` working alone and once with Sol `high` acting only as the Aspera parent. Record task/test success, input/cached-input/output/reasoning tokens per model, reported credits when available, current-rate-card normalized cost, wall time, delegation count, retries, and parent intervention.
+
+The machine-readable protocol and empty result record are in `tests/evals/manual-eval-spec.json`. Published result status: pending. No efficacy or savings claim is made until every gate below passes.
+
+## Release gates
+
+- Direct: 5/5 zero delegation.
+- 10 bounded Aspera tasks >= 9/10 quality.
+- No more than one bounded Aspera task behind Sol baseline per release batch.
+- Median normalized cost <= 70% of Sol.
+- Zero ownership/fallback violations.
+- 5 research cases with same cost target as above.
+- 5 high-risk Terra routes.
+- Parent token usage >= 40% lower than baseline.
+- 5 positive / 3 negative activations.

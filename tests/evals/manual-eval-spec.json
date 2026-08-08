@@ -1,0 +1,86 @@
+{
+  "artifact_type": "manual_evaluation_protocol",
+  "artifact_version": "2.0",
+  "package": {
+    "root": "plugins/aspera-orchestrator",
+    "comparison": [
+      "sol-high-without-subagents",
+      "sol-high-parent-with-aspera"
+    ],
+    "contracts": [
+      "setup/install",
+      "setup/doctor",
+      "setup/uninstall",
+      "runtime/smoke",
+      "static_validation"
+    ]
+  },
+  "fixture_counts": {
+    "direct_route_records": 5,
+    "bounded_route_records": 10,
+    "research_route_records": 5,
+    "risk_route_records": 5,
+    "positive_activation_records": 5,
+    "negative_activation_records": 3
+  },
+  "thresholds": {
+    "direct_route": {
+      "target": 5,
+      "required_passes": 5,
+      "required_zero_delegation": true
+    },
+    "bounded_route_aspera_vs_sol": {
+      "target": 10,
+      "required_aspera_passes": 9,
+      "max_pass_deficit_vs_sol": 1,
+      "median_cost_ratio_vs_sol": 0.7,
+      "max_ownership_violations": 0,
+      "max_silent_fallbacks": 0
+    },
+    "research_route": {
+      "target": 5,
+      "median_cost_ratio_vs_sol": 0.7
+    },
+    "risk_route": {
+      "target": 5,
+      "required_terra_high_routes": 5
+    },
+    "max_parent_token_ratio_vs_sol": 0.6,
+    "activation_mix": {
+      "positive_count": 5,
+      "negative_count": 3
+    }
+  },
+  "recorded_metrics": {
+    "sol_baseline": {
+      "input_tokens": null,
+      "cached_input_tokens": null,
+      "output_tokens": null,
+      "reasoning_tokens": null,
+      "credits_spent": null,
+      "normalized_cost": null,
+      "wall_time_seconds": null,
+      "delegation_count": null,
+      "retries": null,
+      "parent_interventions": null,
+      "result": "pending"
+    },
+    "aspera_orchestrator": {
+      "input_tokens": null,
+      "cached_input_tokens": null,
+      "output_tokens": null,
+      "reasoning_tokens": null,
+      "credits_spent": null,
+      "normalized_cost": null,
+      "wall_time_seconds": null,
+      "delegation_count": null,
+      "retries": null,
+      "parent_interventions": null,
+      "result": "pending"
+    }
+  },
+  "instructions": {
+    "do_not_emit_pass_or_fail": true,
+    "status": "pending"
+  }
+}

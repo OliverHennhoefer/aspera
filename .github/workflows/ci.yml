@@ -1,0 +1,55 @@
+name: aspera-orchestrator-ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+        python-version:
+          - "3.11"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+            python-version: ${{ matrix.python-version }}
+
+      - name: Run shell syntax and static checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n tests/*.sh tests/fixtures/stub/bin/codex plugins/aspera-orchestrator/skills/setup/scripts/*.sh
+          if find tests/fixtures -type f -name '*.sh' | grep -q .; then
+            while IFS= read -r fixture_sh; do
+              bash -n "${fixture_sh}"
+            done < <(find tests/fixtures -type f -name '*.sh')
+          fi
+          python3 -m py_compile tests/*.py
+          bash tests/run.sh
+
+      - name: Run shellcheck
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v shellcheck >/dev/null 2>&1; then
+            if [[ "${RUNNER_OS}" == "macOS" ]]; then
+              brew install shellcheck
+            else
+              sudo apt-get update
+              sudo apt-get install -y shellcheck
+            fi
+          fi
+          shellcheck tests/*.sh tests/fixtures/stub/bin/codex plugins/aspera-orchestrator/skills/setup/scripts/*.sh

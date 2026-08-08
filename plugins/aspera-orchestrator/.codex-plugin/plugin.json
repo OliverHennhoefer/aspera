@@ -1,0 +1,38 @@
+{
+  "name": "aspera-orchestrator",
+  "version": "0.1.0",
+  "description": "Native Codex orchestrator for deterministic planner-worker-verifier execution.",
+  "author": {
+    "name": "Oliver Hennhöfer",
+    "url": "https://github.com/OliverHennhoefer/aspera"
+  },
+  "homepage": "https://github.com/OliverHennhoefer/aspera",
+  "repository": "https://github.com/OliverHennhoefer/aspera",
+  "license": "MIT",
+  "keywords": [
+    "codex",
+    "orchestrator",
+    "planning",
+    "verification",
+    "workflow"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Aspera Orchestrator",
+    "shortDescription": "Bounded Codex orchestration",
+    "longDescription": "Coordinate bounded implementation packets through explicit role routing, deterministic verification, and policy-driven execution.",
+    "developerName": "Oliver Hennhöfer",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Write",
+      "Read"
+    ],
+    "websiteURL": "https://github.com/OliverHennhoefer/aspera",
+    "defaultPrompt": [
+      "Start a scoped coding task with $orchestrate.",
+      "Prepare orchestrator roles with $setup.",
+      "Run verification and report results."
+    ]
+  }
+}

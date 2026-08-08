@@ -1,0 +1,20 @@
+{
+  "name": "aspera",
+  "interface": {
+    "displayName": "Aspera"
+  },
+  "plugins": [
+    {
+      "name": "aspera-orchestrator",
+      "source": {
+        "source": "local",
+        "path": "./plugins/aspera-orchestrator"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

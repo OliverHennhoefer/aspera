@@ -1,6 +1,0 @@
-[agents]
-# Enable the orchestrator role routing for this workspace.
-enabled = true
-
-# Tune this based on repo size and local parallelism.
-max_concurrent_threads_per_session = 4

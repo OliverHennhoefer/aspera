@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CATALOG="${ASPERA_STUB_CATALOG:-${ASPERA_CODEX_STUB_CATALOG:-${ASPERA_CODEX_STUB_MODELS_JSON:-${ASPERA_CODEX_STUB_MODELS:-/dev/null}}}}"
+STUB_STATUS="${ASPERA_CODEX_STUB_STATUS:-0}"
+
+if [[ ! -f "${CATALOG}" ]]; then
+  CATALOG="${ASPERA_CODEX_STUB_DEFAULT_CATALOG:-${ASPERA_CODEX_STUB_FALLBACK:-${BASH_SOURCE[0]%/*}/../models.json}}"
+fi
+
+if [[ "$1" == "--version" ]]; then
+  echo "aspera-codex-stub/1.0"
+  exit 0
+fi
+
+if [[ "$1" == "debug" && "$2" == "models" && "$3" == "--bundled" ]]; then
+  if [[ ! -f "${CATALOG}" ]]; then
+    echo "{\"models\":{}}"
+    exit 0
+  fi
+  cat "${CATALOG}"
+  exit 0
+fi
+
+if [[ "$1" == "catalog" ]] || [[ "$1" == "models" ]] || [[ "$1" == "list-models" ]]; then
+  if [[ ! -f "${CATALOG}" ]]; then
+    echo "[]"
+    exit 0
+  fi
+  cat "${CATALOG}"
+  exit 0
+fi
+
+if [[ "$1" == "validate-models" ]]; then
+  exit "${STUB_STATUS}"
+fi
+
+if [[ "$1" == "exec" ]]; then
+  shift
+  if [[ -n "${ASPERA_SMOKE_ARGS_FILE:-}" ]]; then
+    printf '%s\n' "$@" > "${ASPERA_SMOKE_ARGS_FILE}"
+  fi
+  echo "ASPERA_SMOKE_ARGS=$*"
+  echo "ASPERA_SMOKE_OK"
+  exit 0
+fi
+
+if [[ "$*" == "model" ]]; then
+  shift
+fi
+
+if [[ "${1:-}" == "inspect" ]]; then
+  shift
+fi
+
+if [[ "$#" -gt 0 ]]; then
+  command_name="${1:-}"
+  if [[ "${command_name}" == "--help" ]]; then
+    cat <<'EOF'
+Usage:
+  codex models [--json]
+  codex catalog [--json]
+EOF
+    exit 0
+  fi
+  if [[ "${command_name}" == "models" || "${command_name}" == "catalog" || "${command_name}" == "inspect" ]]; then
+    if [[ -f "${CATALOG}" ]]; then
+      cat "${CATALOG}"
+      exit 0
+    fi
+  fi
+fi
+
+echo "ASPERA_TEST_STUB_OK"

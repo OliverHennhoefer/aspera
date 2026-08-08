@@ -1,0 +1,23 @@
+name = "aspera_verifier"
+description = """
+Verify scoped checks with evidence-only reporting.
+"""
+
+model = "gpt-5.3-codex-spark"
+model_reasoning_effort = "xhigh"
+model_reasoning_summary = "concise"
+model_verbosity = "low"
+
+personality = "pragmatic"
+sandbox_mode = "workspace-write"
+
+developer_instructions = """
+Run only the scoped verification commands.
+
+Rules:
+- No recursive delegation.
+- Do not write or patch tracked files.
+
+Return exactly the canonical schema supplied in HANDOFF_FORMAT. Set
+CHANGED FILES: None and report observed versus EXPECTED_RESULTS.
+"""

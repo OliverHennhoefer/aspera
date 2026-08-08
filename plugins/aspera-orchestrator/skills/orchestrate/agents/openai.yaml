@@ -1,0 +1,6 @@
+interface:
+  display_name: "Orchestrate"
+  short_description: "Apply deterministic planner-worker-verifier packets"
+  default_prompt: "Apply the orchestrator to your packet with $orchestrate."
+policy:
+  allow_implicit_invocation: false

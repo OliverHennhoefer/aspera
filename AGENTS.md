@@ -1,31 +1,49 @@
-# Native Codex Orchestrator Policy (v1)
+# Aspera Orchestrator Policy (clean public contract)
 
-This repository uses a **planner-worker-verifier** model.
+## Source of truth
 
-Source of truth:
-- `AGENTS.md` for enforcement rules and operating policy.
-- `.codex/config.toml` and `.codex/agents/*.toml` for runtime role routing.
-- `plugins/orchestrator/skills/*` for execution and setup workflows.
+- This file (`AGENTS.md`), parent task packet, and current request.
+- `plugins/aspera-orchestrator/skills/orchestrate/references/policy.md`.
+- `plugins/aspera-orchestrator/skills/setup/assets/*` for role defaults.
+- `plugins/aspera-orchestrator/skills/setup/scripts/*` for setup/doctor/uninstall command behavior.
 
-## 1) Operating modes
+Do not derive policy from `.codex/config.toml`.
 
-Use **Express mode** for low-risk, bounded edits:
+## Operating model
 
-- One worker owns the file set end-to-end.
-- One verifier validates explicit checks.
-- Parent inspects diff and verifies manually.
+- Parent is architecture owner and final authority.
+- Direct mode is parent-only.
+- No recursive delegation.
+- No silent fallback to unstated models or roles.
+- If contract ambiguity remains, stop with `BLOCKER OR REQUIRED DECISION`.
+- Shared-state edits are serialized.
 
-Use **Standard mode** for ambiguous or high-risk work:
+## Modes
 
-- Spawn 2–4 explorers in parallel to map read-only evidence.
-- Parent converts evidence into a bounded implementation plan.
-- Spawn implementation workers with disjoint paths.
-- Run verification after each implementation wave.
-- Escalate to `terra-reviewer` for risk gates.
+- Direct: parent-only, no delegated roles.
+- Express: one `aspera_worker`; add `aspera_verifier` only for behavioral, multi-file, public-contract, or failed-worker cases. Parent is final rerun authority.
+- Standard: up to three parallel `aspera_explorer` readers, then disjoint `aspera_worker` edit batches with verification waves.
 
-## 2) Deterministic task packet (required format)
+## Roles
 
-Every worker request must include, verbatim:
+- `aspera_explorer` (read-only investigation)
+- `aspera_worker` (bounded edits)
+- `aspera_verifier` (bounded validation and evidence)
+- `aspera_researcher` (docs/spec checks, evidence-first)
+- `aspera_reviewer` (risk gate, read-only)
+
+## Exact packet schemas
+
+Explorer:
+
+- `TASK_ID`
+- `QUESTION`
+- `READ_ONLY_CONTEXT`
+- `CONSTRAINTS`
+- `EVIDENCE_REQUIRED`
+- `STOP_CONDITIONS`
+
+Worker (full):
 
 - `TASK_ID`
 - `OBJECTIVE`
@@ -39,39 +57,45 @@ Every worker request must include, verbatim:
 - `STOP_CONDITIONS`
 - `HANDOFF_FORMAT`
 
-## 3) Agent roles
+Verifier:
 
-- `spark_explorer` (read-only investigation)
-- `spark_worker` (bounded edits)
-- `spark_verifier` (evidence-based verification)
-- `terra-reviewer` (risk-gated Terra-style read-only review)
+- `TASK_ID`
+- `OWNED_PATHS`
+- `VERIFICATION`
+- `EXPECTED_RESULTS`
+- `CONSTRAINTS`
+- `HANDOFF_FORMAT`
 
-## 4) Rules
+Reviewer:
 
-1. Parent is the architecture owner and final authority.
-2. No recursive delegation (`agent -> agent`).
-3. Workers edit only `OWNED_PATHS`.
-4. No silent fallback to unexpected models; spawn values are explicit.
-5. Every worker report must use its required handoff format.
-6. Shared files are never edited in parallel by multiple workers.
-7. Shared-scope/shared-state edits must be serial.
-8. Parent re-runs explicit verification commands before accepting any output.
+- `TASK_ID`
+- `RISK_SCOPE`
+- `READ_ONLY_CONTEXT`
+- `INVARIANTS`
+- `EVIDENCE_REQUIRED`
+- `HANDOFF_FORMAT`
 
-## 5) Escalation
+Researcher:
 
-Use `terra-reviewer` (or parent) for:
+- Explorer schema with documentation/spec `QUESTION`.
+
+## Escalation triggers
 
 - auth/secrets/data exposure
 - concurrency or persistent state changes
-- public/API or schema changes
+- public API or schema changes
 - unclear invariants
 - repeated verification failures
-- unexpectedly broad diff
+- unexpectedly broad scope
 
-Use `spark`-based roles first; escalate only after retries are exhausted.
+## Canonical handoff format
 
-## 6) Risk and scope controls
+The value of every required `HANDOFF_FORMAT` field is the schema below. Explorer and researcher roles use it directly because their packets do not carry that field. Read-only roles report `CHANGED FILES: None`.
 
-- Every change must be mechanically testable.
-- No behavior redesign without a matching ticketed packet.
-- If ambiguity exists, workers must stop with `BLOCKER OR REQUIRED DECISION`.
+- `STATUS: done | blocked | failed`
+- `TASK_ID:`
+- `CHANGED FILES:`
+- `VERIFICATION COMMANDS AND RESULTS:`
+- `ASSUMPTIONS:`
+- `REMAINING RISKS:`
+- `BLOCKER OR REQUIRED DECISION:`
