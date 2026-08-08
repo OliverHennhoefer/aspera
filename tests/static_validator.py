@@ -47,6 +47,28 @@ def _load_text(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="ignore")
 
 
+def _extract_section(lines: List[str], heading: str) -> str:
+    target = heading.lower()
+    start = None
+    end = len(lines)
+    for idx, raw_line in enumerate(lines):
+        line = raw_line.strip()
+        if not line.startswith("## "):
+            continue
+        if line[3:].strip().lower() == target:
+            start = idx + 1
+            break
+
+    if start is None:
+        return ""
+
+    for idx in range(start, len(lines)):
+        if lines[idx].startswith("## "):
+            end = idx
+            break
+    return "\n".join(lines[start:end]).lower()
+
+
 def _read_json(path: Path) -> Any:
     with path.open("rb") as handle:
         return json.load(handle)
@@ -219,6 +241,73 @@ def _check_skill_frontmatter(path: Path, results: List[ValidationResult]) -> Non
     ok(results, str(path), "SKILL.md has valid name/description frontmatter")
 
 
+def _check_orchestrate_activation_rules(repo_root: Path, plugin_dir: Path, results: List[ValidationResult]) -> None:
+    root_policy = repo_root / "AGENTS.md"
+    managed_policy = (
+        plugin_dir
+        / "skills"
+        / "orchestrate"
+        / "references"
+        / "policy.md"
+    )
+
+    if not root_policy.is_file():
+        fail(results, str(root_policy), "missing root AGENTS.md for activation policy")
+        return
+    if not managed_policy.is_file():
+        fail(results, str(managed_policy), "missing orchestrator managed policy file")
+        return
+
+    root_lines = root_policy.read_text(encoding="utf-8", errors="ignore").splitlines()
+    managed_lines = managed_policy.read_text(encoding="utf-8", errors="ignore").splitlines()
+
+    root_activation = _extract_section(root_lines, "Activation")
+    managed_activation = _extract_section(managed_lines, "Activation")
+    if not root_activation:
+        fail(results, str(root_policy), "AGENTS.md missing Activation section")
+    else:
+        ok(results, str(root_policy), "AGENTS.md has Activation section")
+    if not managed_activation:
+        fail(results, str(managed_policy), "managed policy missing Activation section")
+    else:
+        ok(results, str(managed_policy), "managed policy has Activation section")
+
+    required_boundaries = (
+        "implementation work",
+        "reviews",
+        "explanations",
+        "status requests",
+        "setup",
+        "doctor",
+        "installation",
+        "uninstall",
+    )
+    for policy_path, activation in (
+        (root_policy, root_activation),
+        (managed_policy, managed_activation),
+    ):
+        missing = [term for term in required_boundaries if term not in activation]
+        if missing:
+            fail(results, str(policy_path), f"Activation contract missing: {', '.join(missing)}")
+        else:
+            ok(results, str(policy_path), "activation scope and exclusions are complete")
+
+    managed_text = "\n".join(managed_lines).lower()
+    portable_terms = (
+        ".codex/agents/aspera-*.toml",
+        ".codex/aspera-orchestrator/state.json",
+        "does not depend on the `orchestrate` skill",
+        "setup metadata",
+    )
+    missing = [term for term in portable_terms if term not in managed_text]
+    if missing:
+        fail(results, str(managed_policy), f"managed policy missing portable contract: {', '.join(missing)}")
+    elif "plugins/aspera-orchestrator" in managed_text:
+        fail(results, str(managed_policy), "managed policy still references source-checkout plugin paths")
+    else:
+        ok(results, str(managed_policy), "managed policy is portable and skill-attachment independent")
+
+
 def _check_skill_openai_yaml(path: Path, results: List[ValidationResult]) -> None:
     data = _parse_yaml_nested(_load_text(path))
     interface = data.get("interface")
@@ -259,7 +348,7 @@ def _check_skill_openai_yaml(path: Path, results: List[ValidationResult]) -> Non
         fail(results, str(path), "orchestrate must set allow_implicit_invocation: false")
         return
 
-    ok(results, str(path), "openai.yaml required nested interface and policy fields present")
+    ok(results, str(path), "openai.yaml has valid policy/interface contract")
 
 
 def _check_policy_source(repo_root: Path, results: List[ValidationResult]) -> None:
@@ -274,6 +363,85 @@ def _check_policy_source(repo_root: Path, results: List[ValidationResult]) -> No
             ok(results, str(policy_path), "orchestrator policy.md exists")
     except OSError as exc:
         fail(results, str(policy_path), f"unable to read policy.md: {exc}")
+
+
+def _check_manual_eval_activation_records(repo_root: Path, results: List[ValidationResult]) -> None:
+    eval_path = repo_root / "tests" / "evals" / "manual-eval-spec.json"
+    data = None
+    try:
+        data = _read_json(eval_path)
+    except (json.JSONDecodeError, OSError) as exc:
+        fail(results, str(eval_path), f"invalid manual eval spec JSON: {exc}")
+        return
+
+    fixture_counts = data.get("fixture_counts", {})
+    records = data.get("activation_records")
+    if not isinstance(records, list):
+        fail(results, str(eval_path), "manual eval spec missing activation_records list")
+        return
+
+    positive_expected = fixture_counts.get("positive_activation_records")
+    negative_expected = fixture_counts.get("negative_activation_records")
+    if not isinstance(positive_expected, int) or not isinstance(negative_expected, int):
+        fail(results, str(eval_path), "manual eval spec missing activation record counts")
+        return
+
+    positive_records = [record for record in records if isinstance(record, dict) and record.get("category") == "positive"]
+    negative_records = [record for record in records if isinstance(record, dict) and record.get("category") == "negative"]
+    if len(positive_records) != positive_expected:
+        fail(
+            results,
+            str(eval_path),
+            f"positive activation record count mismatch: expected {positive_expected}, got {len(positive_records)}",
+        )
+    else:
+        ok(results, str(eval_path), "positive activation record count matches fixture")
+    if len(negative_records) != negative_expected:
+        fail(
+            results,
+            str(eval_path),
+            f"negative activation record count mismatch: expected {negative_expected}, got {len(negative_records)}",
+        )
+    else:
+        ok(results, str(eval_path), "negative activation record count matches fixture")
+
+    required_common_keys = ["id", "category", "mode", "delegation", "task_type", "expected_activation", "scenario"]
+    required_positive_keys = required_common_keys
+    required_negative_keys = required_common_keys
+    for record in records:
+        if not isinstance(record, dict):
+            fail(results, str(eval_path), "manual eval activation record must be an object")
+            continue
+        category = record.get("category")
+        if category not in {"positive", "negative"}:
+            fail(results, str(eval_path), f"manual eval activation record {record.get('id')} has invalid category {category!r}")
+            continue
+        for required in (required_positive_keys if category == "positive" else required_negative_keys):
+            if required not in record:
+                fail(results, str(eval_path), f"manual eval activation record {record.get('id')} missing {required}")
+        mode = record.get("mode")
+        if category == "positive":
+            if mode not in {"direct", "express", "standard"}:
+                fail(results, str(eval_path), f"manual eval record {record.get('id')} has invalid positive mode {mode!r}")
+            delegation = record.get("delegation")
+            if not isinstance(delegation, list):
+                fail(results, str(eval_path), f"manual eval record {record.get('id')} delegation must be a list")
+            elif mode == "direct" and delegation:
+                fail(results, str(eval_path), f"manual eval record {record.get('id')} Direct mode must have zero delegation")
+            elif mode != "direct" and not delegation:
+                fail(results, str(eval_path), f"manual eval record {record.get('id')} delegated mode requires a role")
+            if record.get("expected_activation") is not True:
+                fail(results, str(eval_path), f"manual eval record {record.get('id')} should be positive expected_activation=True")
+        else:
+            if mode not in {"none", "not_applicable", "excluded"}:
+                fail(results, str(eval_path), f"manual eval record {record.get('id')} has invalid negative mode {mode!r}")
+            delegation = record.get("delegation")
+            if delegation not in ([], None):
+                fail(results, str(eval_path), f"manual eval record {record.get('id')} should not expect delegation")
+            if record.get("expected_activation") is not False:
+                fail(results, str(eval_path), f"manual eval record {record.get('id')} should be expected_activation=False")
+
+    ok(results, str(eval_path), "manual activation records include category and delegation semantics")
 
 
 def _load_toml(path: Path) -> Dict[str, Any]:
@@ -409,6 +577,8 @@ def validate_package(plugin_dir: Path, repo_root: Path, results: List[Validation
         return
 
     _check_policy_source(repo_root, results)
+    _check_orchestrate_activation_rules(repo_root, plugin_dir, results)
+    _check_manual_eval_activation_records(repo_root, results)
 
     for shell_path in plugin_dir.glob("**/*.sh"):
         if shell_path.is_file():

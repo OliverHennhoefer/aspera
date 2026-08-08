@@ -1,13 +1,21 @@
 ---
 name: orchestrate
 description: |
-  Route repository work through Direct, Express, or Standard orchestrations using
-  explicit role packets.
+  Explicitly invoked orchestration for repository implementation work using
+  Direct, Express, or Standard mode. Do not use for reviews, explanations,
+  status requests, setup, doctor, installation, or uninstall work.
 ---
 
 # Native Orchestrator
 
-Use this skill when implementing repository work in Codex.
+Use this skill only after the user explicitly chooses orchestration for a concrete repository
+implementation task and provides or accepts a packet. A managed Aspera policy in `AGENTS.md`
+can apply the same contract directly without loading this skill.
+
+## Invocation
+
+- Use `/skills` or select `$aspera-orchestrator:orchestrate` for one task.
+- Treat setup/install/doctor/uninstall as non-orchestrate flows handled by the `setup` skill or parent.
 
 ## Operating modes
 

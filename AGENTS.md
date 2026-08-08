@@ -18,6 +18,12 @@ Do not derive policy from `.codex/config.toml`.
 - If contract ambiguity remains, stop with `BLOCKER OR REQUIRED DECISION`.
 - Shared-state edits are serialized.
 
+## Activation
+
+- This repository opts into Aspera for implementation work.
+- Direct mode remains parent-only and performs no delegation.
+- Do not apply Aspera orchestration to reviews, explanations, status requests, setup, doctor, installation, or uninstall work; use the applicable workflow or skill instead.
+
 ## Modes
 
 - Direct: parent-only, no delegated roles.

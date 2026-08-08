@@ -2,10 +2,15 @@
 
 ## Source of truth
 
-- This file (`AGENTS.md`), parent task packet, and current request.
-- Canonical policy: `plugins/aspera-orchestrator/skills/orchestrate/references/policy.md`.
-- Managed role contracts in `plugins/aspera-orchestrator/skills/setup/assets/`.
-- Setup scripts in `plugins/aspera-orchestrator/skills/setup/scripts/`.
+- This managed `AGENTS.md` block, parent task packet, and current request.
+- Installed role contracts in project `.codex/agents/aspera-*.toml`.
+- Setup metadata in `.codex/aspera-orchestrator/state.json`; it is not task policy.
+
+## Activation
+
+- This managed block opts the repository into Aspera for implementation work; it does not depend on the `orchestrate` skill being attached to each task.
+- Direct mode remains parent-only and performs no delegation.
+- Do not apply Aspera orchestration to reviews, explanations, status requests, setup, doctor, installation, or uninstall work; use the applicable workflow or skill instead.
 
 ## Operating model
 

@@ -33,6 +33,15 @@ codex plugin add aspera-orchestrator@aspera
 
 Then open the project where you want to use Aspera and start a **new Codex conversation**.
 
+## Configure workflow in a project
+
+Choose one of these two flows:
+
+- **Profiles only:** install role files, leave `AGENTS.md` unchanged, and explicitly select Orchestrate for each implementation task.
+- **Managed policy:** install role files and the managed `AGENTS.md` block. The repository then uses Aspera for implementation work without attaching the skill to every task. Reviews, explanations, status requests, and setup operations keep their applicable workflows.
+
+Managed policy preserves existing `AGENTS.md` content and changes only the marked Aspera block. Adding the block to an existing file creates a backup. Malformed or duplicate markers stop setup instead of rewriting the file. Start a new Codex conversation after policy installation so Codex loads it.
+
 ## Set up a project
 
 For the Spark profile, ask Codex:
@@ -77,12 +86,14 @@ Aspera never creates, edits, or validates `.codex/config.toml`.
 
 ## Try it
 
-Use a small task with a clear test:
+Without managed policy, open `/skills` or type `$`, select **Aspera Orchestrator: Orchestrate**, and give it a small implementation task with a clear test:
 
 ```text
 Use $aspera-orchestrator:orchestrate in Express mode for this task.
 Report the selected role, model, effort, verification result, and delegation count.
 ```
+
+Selecting the skill is the reliable explicit invocation path; merely pasting its name into a prompt may not attach it. With managed policy installed, ordinary implementation requests follow the policy directly.
 
 ## Profiles
 

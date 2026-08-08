@@ -23,6 +23,80 @@
     "positive_activation_records": 5,
     "negative_activation_records": 3
   },
+  "activation_records": [
+    {
+      "id": "ASP-001",
+      "category": "positive",
+      "mode": "express",
+      "task_type": "implementation",
+      "delegation": ["aspera_worker"],
+      "expected_activation": true,
+      "scenario": "Single-file repository bugfix with explicit orchestrate picker invocation."
+    },
+    {
+      "id": "ASP-002",
+      "category": "positive",
+      "mode": "standard",
+      "task_type": "implementation",
+      "delegation": ["aspera_explorer", "aspera_worker", "aspera_verifier"],
+      "expected_activation": true,
+      "scenario": "Multi-file implementation request in a repository with managed Aspera policy, without attaching the orchestrate skill."
+    },
+    {
+      "id": "ASP-003",
+      "category": "positive",
+      "mode": "direct",
+      "task_type": "implementation",
+      "delegation": [],
+      "expected_activation": true,
+      "scenario": "Trivial implementation request in a repository with managed Aspera policy; Direct mode performs zero delegation."
+    },
+    {
+      "id": "ASP-004",
+      "category": "positive",
+      "mode": "standard",
+      "task_type": "implementation",
+      "delegation": ["aspera_explorer", "aspera_worker", "aspera_verifier"],
+      "expected_activation": true,
+      "scenario": "Complex implementation under managed Aspera policy requiring behavioral checks and deterministic verification."
+    },
+    {
+      "id": "ASP-005",
+      "category": "positive",
+      "mode": "express",
+      "task_type": "implementation",
+      "delegation": ["aspera_worker"],
+      "expected_activation": true,
+      "scenario": "Explicit one-task orchestrate selection for a bounded implementation with a decisive test."
+    },
+    {
+      "id": "ASP-006",
+      "category": "negative",
+      "mode": "not_applicable",
+      "task_type": "review_only",
+      "delegation": null,
+      "expected_activation": false,
+      "scenario": "With managed Aspera policy active, the request asks for code review without implementation changes."
+    },
+    {
+      "id": "ASP-007",
+      "category": "negative",
+      "mode": "excluded",
+      "task_type": "tooling",
+      "delegation": null,
+      "expected_activation": false,
+      "scenario": "With managed Aspera policy active, the request is for setup, doctor, installation, or uninstall work."
+    },
+    {
+      "id": "ASP-008",
+      "category": "negative",
+      "mode": "not_applicable",
+      "task_type": "status_only",
+      "delegation": null,
+      "expected_activation": false,
+      "scenario": "With managed Aspera policy active, the request asks for an explanation or status only."
+    }
+  ],
   "thresholds": {
     "direct_route": {
       "target": 5,
