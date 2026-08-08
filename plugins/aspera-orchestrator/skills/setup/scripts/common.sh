@@ -287,9 +287,9 @@ asp_preflight_models() {
 
   local catalog
   catalog="$(mktemp)"
-  if ! "$codex_bin" debug models --bundled >"$catalog"; then
+  if ! "$codex_bin" debug models >"$catalog"; then
     rm -f "$catalog"
-    aspera_err "failed to run '$codex_bin debug models --bundled'"
+    aspera_err "failed to refresh the authenticated model catalog with '$codex_bin debug models'"
   fi
 
   local parsed

@@ -351,6 +351,14 @@ test_stub_contract() {
     failed=1
   fi
 
+  local refreshed_args="${TMP_ROOT}/stub_refreshed_catalog_args.txt"
+  local refreshed_target="${WORK_ROOT}/stub-refreshed-catalog"
+  rm -rf "${refreshed_target}"
+  mkdir -p "${refreshed_target}"
+  rc="$(ASPERA_STUB_DEBUG_MODELS_ARGS_FILE="${refreshed_args}" capture "${TMP_ROOT}/stub_refreshed_install.out" bash "${INSTALL_SCRIPT}" --profile spark "${refreshed_target}")"
+  assert_exit "${rc}" "0" "installer accepts the authenticated refreshed model catalog"
+  assert_exit "$(cat "${refreshed_args}")" "debug models" "installer does not restrict preflight to the bundled catalog"
+
   local out="${TMP_ROOT}/stub_exec.out"
   local args_file="${TMP_ROOT}/stub_exec_args.txt"
   local rc
