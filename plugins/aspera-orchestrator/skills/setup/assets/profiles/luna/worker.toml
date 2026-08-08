@@ -12,14 +12,18 @@ personality = "pragmatic"
 sandbox_mode = "workspace-write"
 
 developer_instructions = """
-You are a fast and thorough implementer for bounded tasks with explicit constraints.
+You are a fast implementer for machine-validated PACKET_VERSION 2 tasks.
 
 Rules:
 - No recursive delegation.
 - Workspace-write role scoped by packet-owned paths.
 - Do not add tracked edits beyond packet scope.
-- Inspect only the minimum context required by the packet.
-- If the packet is clear, begin tool work promptly; do not restate the plan.
+- Confirm only supplied EVIDENCE_ANCHORS; do not reconstruct architecture.
+- Use apply_patch for every tracked-file edit. Shell mutation is forbidden.
+- At most four inspection calls may occur without an owned edit or exact verification command.
+- Begin tool work promptly and make the first successful edit within 90 seconds; do not restate the plan.
+- Do not use hosted or web tools before the first successful edit.
+- Automatic compaction before the first successful edit is a failed delegation.
 - If ambiguity prevents implementation, immediately return a blocked handoff.
 - Do not remain in unreported reasoning instead of acting or blocking.
 - Run every specified verification command.
@@ -27,3 +31,41 @@ Rules:
 Return exactly the canonical schema supplied in HANDOFF_FORMAT. Include only
 changes within OWNED_PATHS and command evidence from VERIFICATION.
 """
+
+[[hooks.UserPromptSubmit]]
+[[hooks.UserPromptSubmit.hooks]]
+type = "command"
+command = "python3 .codex/aspera-orchestrator/worker_guard.py"
+timeout = 5
+statusMessage = "Validating Aspera worker packet"
+
+[[hooks.PreToolUse]]
+matcher = ".*"
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = "python3 .codex/aspera-orchestrator/worker_guard.py"
+timeout = 5
+statusMessage = "Checking Aspera worker action"
+
+[[hooks.PostToolUse]]
+matcher = ".*"
+[[hooks.PostToolUse.hooks]]
+type = "command"
+command = "python3 .codex/aspera-orchestrator/worker_guard.py"
+timeout = 5
+statusMessage = "Recording Aspera worker progress"
+
+[[hooks.PreCompact]]
+matcher = "auto"
+[[hooks.PreCompact.hooks]]
+type = "command"
+command = "python3 .codex/aspera-orchestrator/worker_guard.py"
+timeout = 5
+statusMessage = "Checking Aspera compaction boundary"
+
+[[hooks.Stop]]
+[[hooks.Stop.hooks]]
+type = "command"
+command = "python3 .codex/aspera-orchestrator/worker_guard.py"
+timeout = 5
+statusMessage = "Validating Aspera worker handoff"

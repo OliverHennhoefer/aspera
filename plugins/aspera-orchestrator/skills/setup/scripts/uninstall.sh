@@ -50,11 +50,13 @@ fi
 
 ASPERA_POLICY_FILE="$ASPERA_TARGET/AGENTS.md"
 aspera_check_managed_ancestry "$ASPERA_TARGET"
-asp_state_validate "$asp_state_file"
+if ! asp_state_validate "$asp_state_file"; then
+  aspera_err "unsupported or invalid state; version 0.2 does not uninstall older state automatically"
+fi
 STATE_POLICY="$(asp_state_get "$asp_state_file" policy_installed)"
 
 DRIFT=0
-for f in ".codex/agents/aspera-explorer.toml" ".codex/agents/aspera-worker.toml" ".codex/agents/aspera-verifier.toml" ".codex/agents/aspera-researcher.toml" ".codex/agents/aspera-reviewer.toml"; do
+for f in "${ASPERA_MANAGED_FILES[@]}"; do
   rec="$(asp_state_get_hash "$asp_state_file" "$f")"
   cur_path="$ASPERA_TARGET/$f"
   if [ -n "$rec" ]; then

@@ -59,7 +59,9 @@ aspera_check_managed_ancestry "$ASPERA_TARGET"
 asp_preflight_models "$PROFILE"
 
 if [ -f "$asp_state_file" ]; then
-  asp_state_validate "$asp_state_file"
+  if ! asp_state_validate "$asp_state_file"; then
+    aspera_err "unsupported or invalid state; version 0.2 requires schema_version 2 and does not upgrade older state"
+  fi
   HAS_STATE=1
   STATE_PROFILE="$(asp_state_get "$asp_state_file" profile)"
   STATE_POLICY="$(asp_state_get "$asp_state_file" policy_installed)"
@@ -97,6 +99,7 @@ WORKER_HASH="$(asp_validate_asset_file "$PROFILE" worker "$ASPERA_MODEL_PRIMARY"
 VERIFIER_HASH="$(asp_validate_asset_file "$PROFILE" verifier "$ASPERA_MODEL_PRIMARY")"
 RESEARCHER_HASH="$(asp_validate_asset_file "$PROFILE" researcher "$ASPERA_MODEL_RESEARCHER")"
 REVIEWER_HASH="$(asp_validate_asset_file "$PROFILE" reviewer "$ASPERA_MODEL_REVIEWER")"
+GUARD_HASH="$(asp_validate_guard_asset)"
 
 EXPLORER_SRC="$(asp_profile_asset_path "$PROFILE" explorer)"
 WORKER_SRC="$(asp_profile_asset_path "$PROFILE" worker)"
@@ -107,19 +110,21 @@ REVIEWER_SRC="$(asp_profile_asset_path "$PROFILE" reviewer)"
 if [ "$HAS_STATE" -eq 1 ]; then
   DRIFT=0
   STATE_CLEAN=1
+  UPDATE_NEEDED=0
 
   for f in \
     ".codex/agents/aspera-explorer.toml:$EXPLORER_HASH" \
     ".codex/agents/aspera-worker.toml:$WORKER_HASH" \
     ".codex/agents/aspera-verifier.toml:$VERIFIER_HASH" \
     ".codex/agents/aspera-researcher.toml:$RESEARCHER_HASH" \
-    ".codex/agents/aspera-reviewer.toml:$REVIEWER_HASH";
+    ".codex/agents/aspera-reviewer.toml:$REVIEWER_HASH" \
+    ".codex/aspera-orchestrator/worker_guard.py:$GUARD_HASH";
   do
     file="${f%%:*}"
     desired_hash="${f#*:}"
     state_hash="$(asp_state_get_hash "$asp_state_file" "$file")"
     if [ "$state_hash" != "$desired_hash" ]; then
-      DRIFT=1
+      UPDATE_NEEDED=1
     fi
 
     cur="$ASPERA_TARGET/$file"
@@ -144,6 +149,10 @@ if [ "$HAS_STATE" -eq 1 ]; then
         DRIFT=1
         STATE_CLEAN=0
       fi
+      DESIRED_POLICY_HASH="$(asp_policy_source_hash "$ASPERA_POLICY_SRC")"
+      if [ "$STATE_POLICY_HASH" != "$DESIRED_POLICY_HASH" ]; then
+        UPDATE_NEEDED=1
+      fi
     fi
   else
     if [ "$POLICY_SCAN" = "ok" ]; then
@@ -158,7 +167,7 @@ if [ "$HAS_STATE" -eq 1 ]; then
 else
   STATE_CLEAN=0
   DRIFT=0
-  for f in ".codex/agents/aspera-explorer.toml" ".codex/agents/aspera-worker.toml" ".codex/agents/aspera-verifier.toml" ".codex/agents/aspera-researcher.toml" ".codex/agents/aspera-reviewer.toml"; do
+  for f in "${ASPERA_MANAGED_FILES[@]}"; do
     if [ -e "$ASPERA_TARGET/$f" ]; then
       DRIFT=1
     fi
@@ -172,7 +181,7 @@ if [ "$HAS_STATE" -eq 1 ] && [ "$PROFILE" != "$STATE_PROFILE" ] && [ "$STATE_CLE
   DRIFT=0
 fi
 
-if [ "$HAS_STATE" -eq 1 ] && [ "$PROFILE" = "$STATE_PROFILE" ] && [ "$STATE_POLICY" -eq "$DESIRED_POLICY" ] && [ "$DRIFT" -eq 0 ] && [ "$FORCE" -eq 0 ]; then
+if [ "$HAS_STATE" -eq 1 ] && [ "$PROFILE" = "$STATE_PROFILE" ] && [ "$STATE_POLICY" -eq "$DESIRED_POLICY" ] && [ "$DRIFT" -eq 0 ] && [ "$UPDATE_NEEDED" -eq 0 ] && [ "$FORCE" -eq 0 ]; then
   aspera_info "install: no changes"
   exit 0
 fi
@@ -230,18 +239,19 @@ aspera_atomic_write "$ASPERA_TARGET/.codex/agents/aspera-worker.toml" < "$WORKER
 aspera_atomic_write "$ASPERA_TARGET/.codex/agents/aspera-verifier.toml" < "$VERIFIER_SRC"
 aspera_atomic_write "$ASPERA_TARGET/.codex/agents/aspera-researcher.toml" < "$RESEARCHER_SRC"
 aspera_atomic_write "$ASPERA_TARGET/.codex/agents/aspera-reviewer.toml" < "$REVIEWER_SRC"
+aspera_atomic_write "$ASPERA_TARGET/.codex/aspera-orchestrator/worker_guard.py" < "$ASPERA_GUARD_SRC"
 
 state_tmp="${asp_state_file}.tmp.$$"
-python3 - "$state_tmp" "$PROFILE" "$ASPERA_MODEL_PRIMARY" "$ASPERA_EFFORT_PRIMARY" "$ASPERA_MODEL_RESEARCHER" "$ASPERA_EFFORT_RESEARCHER" "$ASPERA_MODEL_REVIEWER" "$ASPERA_EFFORT_REVIEWER" "$EXPLORER_HASH" "$WORKER_HASH" "$VERIFIER_HASH" "$RESEARCHER_HASH" "$REVIEWER_HASH" "$DESIRED_POLICY" "$POLICY_STATE_HASH" <<'PY'
+python3 - "$state_tmp" "$PROFILE" "$ASPERA_MODEL_PRIMARY" "$ASPERA_EFFORT_PRIMARY" "$ASPERA_MODEL_RESEARCHER" "$ASPERA_EFFORT_RESEARCHER" "$ASPERA_MODEL_REVIEWER" "$ASPERA_EFFORT_REVIEWER" "$EXPLORER_HASH" "$WORKER_HASH" "$VERIFIER_HASH" "$RESEARCHER_HASH" "$REVIEWER_HASH" "$GUARD_HASH" "$DESIRED_POLICY" "$POLICY_STATE_HASH" <<'PY'
 import json
 import pathlib
 import sys
 
 state_file = sys.argv[1]
 payload = {
-    'schema_version': 1,
+    'schema_version': 2,
     'plugin': 'aspera-orchestrator',
-    'plugin_version': '0.1.0',
+    'plugin_version': '0.2.0',
     'profile': sys.argv[2],
     'models': {
         'primary': sys.argv[3],
@@ -259,9 +269,17 @@ payload = {
         '.codex/agents/aspera-verifier.toml': sys.argv[11],
         '.codex/agents/aspera-researcher.toml': sys.argv[12],
         '.codex/agents/aspera-reviewer.toml': sys.argv[13],
+        '.codex/aspera-orchestrator/worker_guard.py': sys.argv[14],
     },
-    'policy_installed': bool(int(sys.argv[14])),
-    'policy_hash': sys.argv[15] if bool(int(sys.argv[14])) else '',
+    'guard': {
+        'required': True,
+        'verified': False,
+        'profile': '',
+        'asset_hash': sys.argv[14],
+        'verified_at': '',
+    },
+    'policy_installed': bool(int(sys.argv[15])),
+    'policy_hash': sys.argv[16] if bool(int(sys.argv[15])) else '',
 }
 pathlib.Path(state_file).write_text(json.dumps(payload, indent=2) + '\n')
 PY

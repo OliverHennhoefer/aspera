@@ -15,10 +15,14 @@
 ## Worker lifecycle protocol
 
 - A clean worktree or quota change alone does not prove worker success or failure.
-- Inspect the active thread, effective sandbox/approval state, working directory, and latest tool event before any corrective steer.
-- Use the packet deadline when present; otherwise use 120 seconds as a conservative fallback before classifying non-progress. This is not an expected latency or root-cause diagnosis.
-- Issue at most one corrective steer per task, only when ambiguity exists or non-progress is visible.
-- Interrupt only on confirmed failure, approval block, task timeout, or sustained non-progress; parent takeover is recorded as failed delegation with parent intervention.
+- Validate every worker packet with `.codex/aspera-orchestrator/worker_guard.py --validate-packet --root <repository>` before spawn.
+- Require schema-2 state with `guard.verified: true` for the current profile and managed guard hash; otherwise stop and run the worker runtime smoke.
+- Spawn the worker with the repository root as its working directory; a different working directory is a pre-spawn blocker because the agent-scoped guard path is root-relative.
+- Permit at most four inspection calls without a successful owned edit or exact verification command.
+- Require the first successful owned-file edit within 90 seconds of packet acceptance; there is no total task timeout while progress continues.
+- Automatic pre-edit compaction, exhausted inspection budget, approval block, or missed first-edit deadline ends the worker turn.
+- Inspect the active thread, effective sandbox/approval state, working directory, and latest tool event before interruption.
+- Do not steer a pre-edit failed worker. Correct the packet or routing and use one fresh worker; parent takeover is a failed delegation with parent intervention.
 
 ## Operating model
 
@@ -31,8 +35,8 @@
 ## Modes
 
 - Direct: parent-only execution lifecycle (plan, edit, verify), no delegated roles.
-- Express: one `aspera_worker`; add `aspera_verifier` only for behavioral, multi-file, public-contract, or failed-worker cases; parent is final rerun authority.
-- Standard: up to 3 parallel `aspera_explorer` readers, then disjoint `aspera_worker` edit batches with verification waves.
+- Express: one `aspera_worker` only when packet v2 is implementation-ready and no escalation trigger exists; add `aspera_verifier` for behavioral or multi-file work.
+- Standard: required for an escalation trigger; use up to 3 parallel `aspera_explorer` readers, parent resolution, then serialized or disjoint worker batches with verification waves.
 
 ## Roles (model-neutral)
 
@@ -46,11 +50,11 @@
 
 - Direct: no role packet required.
 - Explorer packet:
-  - `TASK_ID`, `QUESTION`, `READ_ONLY_CONTEXT`, `CONSTRAINTS`, `EVIDENCE_REQUIRED`, `STOP_CONDITIONS`.
+  - `PACKET_VERSION: 2`, `TASK_ID`, `QUESTION`, `READ_ONLY_CONTEXT`, `CONSTRAINTS`, `EVIDENCE_REQUIRED`, `STOP_CONDITIONS`.
 - Researcher packet:
-  - `TASK_ID`, `QUESTION`, `READ_ONLY_CONTEXT`, `CONSTRAINTS`, `EVIDENCE_REQUIRED`, `STOP_CONDITIONS`.
+  - Explorer schema with a documentation/spec `QUESTION`.
 - Worker packet:
-  - `TASK_ID`, `OBJECTIVE`, `OWNED_PATHS`, `READ_ONLY_CONTEXT`, `INTERFACE_CONTRACTS`, `CONSTRAINTS`, `NON_GOALS`, `IMPLEMENTATION_STEPS`, `VERIFICATION`, `STOP_CONDITIONS`, `HANDOFF_FORMAT`.
+  - `PACKET_VERSION: 2`, `TASK_ID`, `OBJECTIVE`, `READY_STATE: IMPLEMENTATION_READY`, `OWNED_PATHS`, `EVIDENCE_ANCHORS`, `INTERFACE_CONTRACTS`, `INVARIANTS`, `NON_GOALS`, `IMPLEMENTATION_STEPS`, `ACCEPTANCE_CRITERIA`, `VERIFICATION`, `STOP_CONDITIONS`, `HANDOFF_FORMAT`.
 - Verifier packet:
   - `TASK_ID`, `OWNED_PATHS`, `VERIFICATION`, `EXPECTED_RESULTS`, `CONSTRAINTS`, `HANDOFF_FORMAT`.
 - Reviewer packet:
@@ -67,9 +71,13 @@
 
 Use `aspera_reviewer` (or parent) for the triggers above.
 
+## Read-only handoff format
+
+Explorer and researcher roles return `STATUS`, `TASK_ID`, `FINDINGS`, `EVIDENCE_ANCHORS`, `UNRESOLVED_DECISIONS`, `RISKS`, and `BLOCKER OR REQUIRED DECISION`. The parent resolves all open decisions before compiling a worker packet.
+
 ## Canonical handoff format
 
-The value of every required `HANDOFF_FORMAT` field is the schema below. Explorer and researcher roles use it directly because their packets do not carry that field. Read-only roles report `CHANGED FILES: None`.
+The value of every worker, verifier, or reviewer `HANDOFF_FORMAT` field is:
 
 - `STATUS: done | blocked | failed`
 - `TASK_ID:`

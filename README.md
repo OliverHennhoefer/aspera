@@ -2,7 +2,7 @@
 
 Aspera is an experimental Codex plugin. It delegates small, clearly defined tasks to less expensive models while keeping the main Sol agent responsible for planning and final acceptance.
 
-Version: `0.1.0` alpha. Cost and quality results are still pending; no savings claim is made yet.
+Version: `0.2.0` alpha. Packet v2 and state schema 2 are hard breaks; version 0.1 state is not upgraded. Cost and quality results are still pending; no savings claim is made yet.
 
 ## Requirements
 
@@ -47,13 +47,13 @@ Managed policy preserves existing `AGENTS.md` content and changes only the marke
 For the Spark profile, ask Codex:
 
 ```text
-Use $aspera-orchestrator:setup to install the Spark profile in this repository, then run doctor.
+Use $aspera-orchestrator:setup to install the Spark profile in this repository, then run doctor with the worker runtime smoke.
 ```
 
 For the Luna profile:
 
 ```text
-Use $aspera-orchestrator:setup to install the Luna profile in this repository, then run doctor.
+Use $aspera-orchestrator:setup to install the Luna profile in this repository, then run doctor with the worker runtime smoke.
 ```
 
 Setup creates:
@@ -64,13 +64,15 @@ Setup creates:
 .codex/agents/aspera-verifier.toml
 .codex/agents/aspera-researcher.toml
 .codex/agents/aspera-reviewer.toml
+.codex/aspera-orchestrator/worker_guard.py
 .codex/aspera-orchestrator/state.json
 ```
 
-Successful setup ends with:
+Successful activation ends with:
 
 ```text
 doctor: state and managed files are valid
+worker guard verification recorded
 doctor: ok
 ```
 
@@ -79,10 +81,12 @@ These files may appear as untracked in Git. That is expected. Review and commit 
 The project `AGENTS.md` is unchanged by default. To install the optional managed policy block, ask:
 
 ```text
-Use $aspera-orchestrator:setup to install the Spark profile and the managed AGENTS.md policy, then run doctor.
+Use $aspera-orchestrator:setup to install the Spark profile and the managed AGENTS.md policy, then run doctor with the worker runtime smoke.
 ```
 
 Aspera never creates, edits, or validates `.codex/config.toml`.
+
+Worker profiles load the managed project guard as an agent-scoped hook. The project must be trusted and Codex hooks must remain enabled. Run the worker runtime smoke before relying on delegated implementation.
 
 ## Try it
 
@@ -111,6 +115,34 @@ Spark prioritizes speed and uses its separate preview allowance. Luna is the bro
 - **Standard:** up to three independent explorers, disjoint workers, verification after each wave, and Terra only for declared risk triggers.
 
 The parent remains responsible for architecture, decisive checks, and final acceptance. Delegation is non-recursive and each path has one writer.
+
+Every worker receives packet v2 in this order:
+
+```text
+PACKET_VERSION: 2
+TASK_ID: <stable-id>
+OBJECTIVE: <observable outcome>
+READY_STATE: IMPLEMENTATION_READY
+OWNED_PATHS:
+- <exact repository-relative file>
+EVIDENCE_ANCHORS:
+- <existing path>::<exact symbol or text>
+INTERFACE_CONTRACTS: <settled interfaces>
+INVARIANTS: <properties that must hold>
+NON_GOALS: <excluded work>
+IMPLEMENTATION_STEPS:
+1. <path/symbol edit>
+2. <path/symbol edit>
+3. <verification and handoff>
+ACCEPTANCE_CRITERIA: <decisive result>
+VERIFICATION:
+- COMMAND: <exact command>
+  EXPECTED: <exact success evidence>
+STOP_CONDITIONS: <conditions requiring a blocked handoff>
+HANDOFF_FORMAT: <canonical implementation handoff>
+```
+
+Packet v1 is rejected. Explorer and researcher results use `FINDINGS`, `EVIDENCE_ANCHORS`, `UNRESOLVED_DECISIONS`, `RISKS`, and `BLOCKER OR REQUIRED DECISION`; the parent resolves every decision before marking a worker packet ready.
 
 ## Check or remove setup
 
@@ -150,8 +182,9 @@ ASPERA_CODEX_BIN="<path-to-codex>" bash "<path-to-aspera>/plugins/aspera-orchest
 - **Spark is unavailable:** confirm ChatGPT Pro access and try the Luna profile. A newer client alone does not grant Spark access.
 - **An updated plugin is not visible:** reinstall the plugin and start a new conversation.
 - **Drift detected:** review the changed managed files before using `--force`.
+- **Version 0.1 state found:** uninstall it with the version 0.1 scripts, then install 0.2. There is no state or packet compatibility path.
 - **Worker appears stalled:** inspect its thread, effective permissions, working directory, and latest tool event. Quota movement or a clean worktree alone does not prove success or failure.
-- **Runtime smoke:** `doctor.sh --runtime-smoke explorer TARGET` checks role discovery. `doctor.sh --runtime-smoke worker TARGET` runs paid parent and worker model activity and validates a deterministic edit in an isolated temporary workspace. Each has a 120-second timeout and reports usage exposed by the CLI.
+- **Runtime smoke:** `doctor.sh --runtime-smoke explorer TARGET` checks role discovery. `doctor.sh --runtime-smoke worker TARGET` runs paid parent and worker model activity, requires the guard-armed marker, and validates a deterministic edit in an isolated temporary workspace. The worker must edit within 90 seconds; the diagnostic process has a separate 300-second safety ceiling.
 
 ## Evaluation status
 

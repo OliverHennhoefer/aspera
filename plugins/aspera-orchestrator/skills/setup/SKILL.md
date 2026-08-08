@@ -21,7 +21,9 @@ Run one of:
 ### Executed behavior
 
 - Writes managed role files into `.codex/agents/`.
+- Writes the worker packet/progress guard to `.codex/aspera-orchestrator/worker_guard.py`.
 - Optionally installs managed policy block into root `AGENTS.md` when using `--install-policy`.
+- Requires state schema 2; version 0.1 state is a hard break and is not upgraded or uninstalled automatically.
 - Preserves managed/serialized behavior defined by installer state and scripts.
 
 ## Non-goals

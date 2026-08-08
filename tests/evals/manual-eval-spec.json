@@ -58,7 +58,7 @@
       "task_type": "implementation",
       "delegation": ["aspera_explorer", "aspera_worker", "aspera_verifier"],
       "expected_activation": true,
-      "scenario": "Complex implementation under managed Aspera policy requiring behavioral checks and deterministic verification."
+      "scenario": "Schema/migration plus model and runtime write-path implementation under managed Aspera policy; the escalation trigger requires Standard exploration, parent resolution, disjoint workers, and verification."
     },
     {
       "id": "ASP-005",
@@ -145,6 +145,10 @@
       "interruption_reason": null,
       "worktree_changes_before_interrupt": null,
       "parent_takeover": null,
+      "packet_readiness_result": null,
+      "pre_edit_inspection_count": null,
+      "compactions_before_first_edit": null,
+      "guard_classification": null,
       "result": "pending"
     },
     "aspera_orchestrator": {
@@ -166,6 +170,10 @@
       "interruption_reason": null,
       "worktree_changes_before_interrupt": null,
       "parent_takeover": null,
+      "packet_readiness_result": null,
+      "pre_edit_inspection_count": null,
+      "compactions_before_first_edit": null,
+      "guard_classification": null,
       "result": "pending"
     }
   },

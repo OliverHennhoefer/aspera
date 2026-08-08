@@ -56,9 +56,18 @@ if [ ! -f "$asp_state_file" ]; then
 fi
 
 aspera_check_managed_ancestry "$ASPERA_TARGET"
-asp_state_validate "$asp_state_file"
+if ! asp_state_validate "$asp_state_file"; then
+  aspera_err "unsupported or invalid state; version 0.2 requires schema_version 2"
+fi
 STATE_PROFILE="$(asp_state_get "$asp_state_file" profile)"
 STATE_POLICY="$(asp_state_get "$asp_state_file" policy_installed)"
+GUARD_VERIFIED="$(python3 - "$asp_state_file" <<'PY'
+import json
+import sys
+with open(sys.argv[1], encoding='utf-8') as handle:
+    print('1' if json.load(handle).get('guard', {}).get('verified') is True else '0')
+PY
+)"
 
 if [ -n "$PROFILE" ]; then
   aspera_validate_profile "$PROFILE"
@@ -80,7 +89,7 @@ if [ "$SCAN" = "invalid" ]; then
   FAIL=1
 fi
 
-for f in ".codex/agents/aspera-explorer.toml" ".codex/agents/aspera-worker.toml" ".codex/agents/aspera-verifier.toml" ".codex/agents/aspera-researcher.toml" ".codex/agents/aspera-reviewer.toml"; do
+for f in "${ASPERA_MANAGED_FILES[@]}"; do
   rel="$ASPERA_TARGET/$f"
   if [ ! -f "$rel" ]; then
     echo "[MISSING] $rel"
@@ -99,6 +108,16 @@ for f in ".codex/agents/aspera-explorer.toml" ".codex/agents/aspera-worker.toml"
     FAIL=1
   fi
 done
+
+if ! python3 "$ASPERA_TARGET/.codex/aspera-orchestrator/worker_guard.py" --help >/dev/null 2>&1; then
+  echo "[INVALID] worker guard is not executable by Python"
+  FAIL=1
+fi
+profile_file="$ASPERA_TARGET/.codex/agents/aspera-worker.toml"
+if ! grep -Fq 'command = "python3 .codex/aspera-orchestrator/worker_guard.py"' "$profile_file"; then
+  echo "[INVALID] worker profile does not reference the managed guard"
+  FAIL=1
+fi
 
 if [ "$STATE_POLICY" -eq 1 ]; then
   if [ "$SCAN" != "ok" ]; then
@@ -120,6 +139,10 @@ if [ "$FAIL" -ne 0 ]; then
   aspera_err "doctor failed"
 fi
 
+if [ "$GUARD_VERIFIED" -ne 1 ] && [ -z "$RUNTIME_SMOKE" ]; then
+  aspera_err "worker guard is unverified; run doctor --runtime-smoke worker before delegation"
+fi
+
 echo "doctor: state and managed files are valid"
 
 if [ -n "$RUNTIME_SMOKE" ]; then
@@ -130,6 +153,11 @@ if [ -n "$RUNTIME_SMOKE" ]; then
   out_file="$(mktemp)"
   status_file="$(mktemp)"
   if asp_run_smoke "$RUNTIME_SMOKE" "$ASPERA_TARGET" "$out_file" "$status_file"; then
+    if [ "$RUNTIME_SMOKE" = "worker" ]; then
+      guard_hash="$(asp_state_get_hash "$asp_state_file" '.codex/aspera-orchestrator/worker_guard.py')"
+      asp_mark_guard_verified "$asp_state_file" "$PROFILE" "$guard_hash"
+      aspera_info "worker guard verification recorded"
+    fi
     aspera_info "runtime-smoke kind: $RUNTIME_SMOKE"
     cat "$status_file"
     asp_report_smoke_usage "$out_file"

@@ -27,17 +27,22 @@ Do not derive policy from `.codex/config.toml`.
 ## Worker lifecycle protocol
 
 - A clean worktree or quota change alone does not prove worker success or failure.
-- On first signs of worker stall or uncertainty, inspect the active thread, effective sandbox/approval state, working directory, and latest tool event before intervening.
-- Permit at most one corrective steer during a single task unless state has changed materially.
-- Use the packet deadline when present; otherwise use 120 seconds as a conservative fallback before classifying non-progress. This is not an expected latency or root-cause diagnosis.
-- Interrupt only when there is confirmed failure, explicit approval block, task timeout, or sustained non-progress.
-- Parent intervention in interrupted worker cases is treated as a failed delegation and parent intervention.
+- Before spawn, validate the complete worker packet with the managed worker guard.
+- Delegation requires schema-2 state with `guard.verified: true` for the installed profile and guard hash.
+- Spawn workers with the repository root as their working directory so the managed agent-scoped hook path resolves exactly.
+- The worker receives settled architecture and exact evidence anchors; it confirms them but does not rediscover architecture.
+- Permit at most four inspection calls without a successful owned edit or exact verification command.
+- Require the first successful owned-file edit within 90 seconds of packet acceptance. This is not a total task timeout.
+- Automatic compaction before the first edit, exhausted inspection budget, approval block, or missed first-edit deadline ends the worker turn.
+- Inspect the active thread, effective sandbox/approval state, working directory, and latest tool event before interruption.
+- Do not steer a pre-edit failed worker. Correct the packet or routing and use one fresh worker.
+- Parent intervention after interruption is a failed delegation and is reported as parent intervention.
 
 ## Modes
 
 - Direct: parent-only, no delegated roles.
-- Express: one `aspera_worker`; add `aspera_verifier` only for behavioral, multi-file, public-contract, or failed-worker cases. Parent is final rerun authority.
-- Standard: up to three parallel `aspera_explorer` readers, then disjoint `aspera_worker` edit batches with verification waves.
+- Express: one `aspera_worker` only for an implementation-ready packet with no escalation trigger; add `aspera_verifier` for behavioral or multi-file work. Parent is final rerun authority.
+- Standard: required for every escalation trigger; use up to three parallel `aspera_explorer` readers, parent resolution, then serialized or disjoint `aspera_worker` edit batches with verification waves.
 
 ## Roles
 
@@ -51,6 +56,7 @@ Do not derive policy from `.codex/config.toml`.
 
 Explorer:
 
+- `PACKET_VERSION: 2`
 - `TASK_ID`
 - `QUESTION`
 - `READ_ONLY_CONTEXT`
@@ -60,14 +66,17 @@ Explorer:
 
 Worker (full):
 
+- `PACKET_VERSION: 2`
 - `TASK_ID`
 - `OBJECTIVE`
+- `READY_STATE: IMPLEMENTATION_READY`
 - `OWNED_PATHS`
-- `READ_ONLY_CONTEXT`
+- `EVIDENCE_ANCHORS`
 - `INTERFACE_CONTRACTS`
-- `CONSTRAINTS`
+- `INVARIANTS`
 - `NON_GOALS`
 - `IMPLEMENTATION_STEPS`
+- `ACCEPTANCE_CRITERIA`
 - `VERIFICATION`
 - `STOP_CONDITIONS`
 - `HANDOFF_FORMAT`
@@ -94,6 +103,20 @@ Researcher:
 
 - Explorer schema with documentation/spec `QUESTION`.
 
+## Read-only handoff format
+
+Explorer and researcher roles return:
+
+- `STATUS: done | blocked | failed`
+- `TASK_ID:`
+- `FINDINGS:`
+- `EVIDENCE_ANCHORS:`
+- `UNRESOLVED_DECISIONS:`
+- `RISKS:`
+- `BLOCKER OR REQUIRED DECISION:`
+
+The parent resolves every `UNRESOLVED_DECISIONS` entry before setting `READY_STATE: IMPLEMENTATION_READY`.
+
 ## Escalation triggers
 
 - auth/secrets/data exposure
@@ -105,7 +128,7 @@ Researcher:
 
 ## Canonical handoff format
 
-The value of every required `HANDOFF_FORMAT` field is the schema below. Explorer and researcher roles use it directly because their packets do not carry that field. Read-only roles report `CHANGED FILES: None`.
+The value of every worker, verifier, or reviewer `HANDOFF_FORMAT` field is:
 
 - `STATUS: done | blocked | failed`
 - `TASK_ID:`

@@ -36,6 +36,7 @@ MANAGED_ROLES=(
   ".codex/agents/aspera-verifier.toml"
   ".codex/agents/aspera-researcher.toml"
   ".codex/agents/aspera-reviewer.toml"
+  ".codex/aspera-orchestrator/worker_guard.py"
 )
 
 failed=0
@@ -154,6 +155,9 @@ asset_path() {
     researcher|reviewer)
       echo "${ASSETS_DIR}/shared/${role}.toml"
       ;;
+    guard)
+      echo "${ROOT}/plugins/aspera-orchestrator/skills/setup/assets/worker_guard.py"
+      ;;
     *) echo "" ;;
   esac
 }
@@ -170,11 +174,11 @@ import sys
 state_path, profile = sys.argv[1:3]
 state = json.loads(pathlib.Path(state_path).read_text(encoding="utf-8"))
 
-if state.get("schema_version") != 1:
+if state.get("schema_version") != 2:
     raise SystemExit(1)
 if state.get("plugin") != "aspera-orchestrator":
     raise SystemExit(1)
-if state.get("plugin_version") != "0.1.0":
+if state.get("plugin_version") != "0.2.0":
     raise SystemExit(1)
 if state.get("profile") != profile:
     raise SystemExit(1)
@@ -182,6 +186,7 @@ if state.get("profile") != profile:
 models = state.get("models", {})
 efforts = state.get("efforts", {})
 managed = state.get("managed_files", {})
+guard = state.get("guard", {})
 if set(models.keys()) != {"primary", "researcher", "reviewer"}:
     raise SystemExit(1)
 if set(efforts.keys()) != {"primary", "researcher", "reviewer"}:
@@ -211,12 +216,22 @@ required = {
     ".codex/agents/aspera-verifier.toml",
     ".codex/agents/aspera-researcher.toml",
     ".codex/agents/aspera-reviewer.toml",
+    ".codex/aspera-orchestrator/worker_guard.py",
 }
 if set(managed.keys()) != required:
     raise SystemExit(1)
 for key in required:
     if not isinstance(managed[key], str) or re.fullmatch(r"[0-9a-f]{64}", managed[key]) is None:
         raise SystemExit(1)
+
+if guard != {
+    "required": True,
+    "verified": False,
+    "profile": "",
+    "asset_hash": managed[".codex/aspera-orchestrator/worker_guard.py"],
+    "verified_at": "",
+}:
+    raise SystemExit(1)
 
 if state.get("policy_installed") not in (0, False, 1, True):
     raise SystemExit(1)
@@ -236,8 +251,12 @@ assert_managed_state_hashes() {
   local role
   local managed_file
   for managed_file in "${MANAGED_ROLES[@]}"; do
-    role="${managed_file#*aspera-}"
-    role="${role%.toml}"
+    if [[ "${managed_file}" == ".codex/aspera-orchestrator/worker_guard.py" ]]; then
+      role="guard"
+    else
+      role="${managed_file#*aspera-}"
+      role="${role%.toml}"
+    fi
     local source
     source="$(asset_path "${profile}" "${role}")"
     local expected
@@ -254,8 +273,12 @@ assert_installed_roles() {
   local role
   local managed_file
   for managed_file in "${MANAGED_ROLES[@]}"; do
-    role="${managed_file#*aspera-}"
-    role="${role%.toml}"
+    if [[ "${managed_file}" == ".codex/aspera-orchestrator/worker_guard.py" ]]; then
+      role="guard"
+    else
+      role="${managed_file#*aspera-}"
+      role="${role%.toml}"
+    fi
     local source
     source="$(asset_path "${profile}" "${role}")"
     local installed="${target}/${managed_file}"
@@ -266,6 +289,17 @@ assert_installed_roles() {
     else
       echo "[FAIL] installed file ${managed_file} does not match ${source}"
       failed=1
+    fi
+
+    if [[ "${role}" == "guard" ]]; then
+      if python3 "${installed}" --help >/dev/null; then
+        echo "[PASS] installed worker guard is executable by Python"
+        pass_count=$((pass_count + 1))
+      else
+        echo "[FAIL] installed worker guard is not executable by Python"
+        failed=1
+      fi
+      continue
     fi
 
     python3 - "$installed" "${role}" "${profile}" <<'PY'
@@ -420,7 +454,7 @@ test_profile_install_contract() {
   assert_installed_roles "${target}" "${profile}"
   assert_managed_state_hashes "${target}/${STATE_FILE}" "${profile}"
 
-  assert_exit "$(read_state_value "${target}/${STATE_FILE}" schema_version)" "1" "state schema_version is 1"
+  assert_exit "$(read_state_value "${target}/${STATE_FILE}" schema_version)" "2" "state schema_version is 2"
   local expected_profile_policy="0"
   assert_exit "$(read_state_value "${target}/${STATE_FILE}" policy_installed)" "${expected_profile_policy}" "install ${profile} defaults policy_installed=false"
 
@@ -457,6 +491,41 @@ test_install_contracts() {
   post_roles="$(snapshot_signature "${spark_target}")"
   assert_exit "${pre_hash}" "${post_hash}" "state file stable across repeated install"
   assert_exit "${pre_roles}" "${post_roles}" "managed artifacts stable across repeated install"
+
+  local clean_upgrade_target="${WORK_ROOT}/clean-v2-upgrade"
+  rm -rf "${clean_upgrade_target}"
+  mkdir -p "${clean_upgrade_target}"
+  capture "${TMP_ROOT}/clean_v2_seed.out" bash "${INSTALL_SCRIPT}" "${clean_upgrade_target}" >/dev/null
+  printf '\n# prior managed v2 asset\n' >> "${clean_upgrade_target}/.codex/agents/aspera-worker.toml"
+  local prior_managed_hash
+  prior_managed_hash="$(hash_file "${clean_upgrade_target}/.codex/agents/aspera-worker.toml")"
+  python3 - "${clean_upgrade_target}/${STATE_FILE}" "${prior_managed_hash}" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+state = json.loads(path.read_text(encoding="utf-8"))
+state["managed_files"][".codex/agents/aspera-worker.toml"] = sys.argv[2]
+path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+PY
+  rc="$(capture "${TMP_ROOT}/clean_v2_upgrade.out" bash "${INSTALL_SCRIPT}" "${clean_upgrade_target}")"
+  assert_exit "${rc}" "0" "clean schema-v2 managed asset update succeeds without force"
+  assert_exit "$(hash_file "${clean_upgrade_target}/.codex/agents/aspera-worker.toml")" "$(hash_file "${ASSETS_DIR}/spark/worker.toml")" "clean schema-v2 update installs current worker asset"
+
+  local v1_target="${WORK_ROOT}/v1-hard-break"
+  rm -rf "${v1_target}"
+  mkdir -p "${v1_target}/.codex/aspera-orchestrator"
+  printf '%s\n' '{"schema_version":1,"plugin":"aspera-orchestrator","plugin_version":"0.1.0"}' > "${v1_target}/${STATE_FILE}"
+  rc="$(capture "${TMP_ROOT}/v1_hard_break.out" bash "${INSTALL_SCRIPT}" "${v1_target}")"
+  assert_exit "${rc}" "1" "schema-v1 state is a hard break"
+  if grep -q -- "does not upgrade older state" "${TMP_ROOT}/v1_hard_break.out"; then
+    echo "[PASS] schema-v1 hard break reports explicit reinstall guidance"
+    pass_count=$((pass_count + 1))
+  else
+    echo "[FAIL] schema-v1 hard break guidance missing"
+    failed=1
+  fi
 
   rc="$(capture "${TMP_ROOT}/install_switch.out" bash "${INSTALL_SCRIPT}" --profile luna "${spark_target}")"
   assert_exit "${rc}" "0" "clean profile switch to luna succeeds"
@@ -728,6 +797,29 @@ test_policy_contracts() {
     failed=1
   fi
 
+  python3 - "${target}/AGENTS.md" "${target}/${STATE_FILE}" <<'PY'
+import hashlib
+import json
+import pathlib
+import sys
+
+agents = pathlib.Path(sys.argv[1])
+state_path = pathlib.Path(sys.argv[2])
+start = "<!-- aspera-orchestrator:policy:start -->"
+end = "<!-- aspera-orchestrator:policy:end -->"
+text = agents.read_text(encoding="utf-8")
+before, remainder = text.split(start, 1)
+_, after = remainder.split(end, 1)
+prior = "prior managed schema-2 policy"
+agents.write_text(before + start + "\n" + prior + "\n" + end + after, encoding="utf-8")
+state = json.loads(state_path.read_text(encoding="utf-8"))
+state["policy_hash"] = hashlib.sha256(prior.encode("utf-8")).hexdigest()
+state_path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+PY
+  rc="$(capture "${TMP_ROOT}/policy_clean_update.out" bash "${INSTALL_SCRIPT}" --install-policy "${target}")"
+  assert_exit "${rc}" "0" "clean schema-v2 policy update succeeds without force"
+  assert_true "grep -Fq 'Worker lifecycle protocol' \"${target}/AGENTS.md\"" "clean policy update installs current managed policy"
+
   printf "%s\n" \
     "<!-- aspera-orchestrator:policy:start -->" \
     "dup1" \
@@ -765,6 +857,18 @@ test_doctor_contracts() {
   local out="${TMP_ROOT}/doctor.out"
   local rc
   rc="$(capture "${out}" bash "${DOCTOR_SCRIPT}" "${target}")"
+  assert_exit "${rc}" "1" "doctor blocks delegation until worker guard verification"
+  if grep -q -- "worker guard is unverified" "${out}"; then
+    echo "[PASS] doctor reports the guard activation requirement"
+    pass_count=$((pass_count + 1))
+  else
+    echo "[FAIL] doctor guard activation guidance missing"
+    failed=1
+  fi
+  rc="$(capture "${TMP_ROOT}/doctor_guard_activate.out" bash "${DOCTOR_SCRIPT}" --runtime-smoke worker "${target}")"
+  assert_exit "${rc}" "0" "worker smoke activates guard verification"
+  assert_exit "$(read_state_value "${target}/${STATE_FILE}" guard verified)" "1" "state records successful guard verification"
+  rc="$(capture "${out}" bash "${DOCTOR_SCRIPT}" "${target}")"
   assert_exit "${rc}" "0" "doctor validates healthy installation"
 
   rc="$(capture "${out}" bash "${DOCTOR_SCRIPT}" --profile luna "${target}")"
@@ -780,6 +884,7 @@ test_doctor_contracts() {
   rm -rf "${target2}"
   mkdir -p "${target2}"
   capture "${TMP_ROOT}/doctor_install2.out" bash "${INSTALL_SCRIPT}" "${target2}" >/dev/null
+  capture "${TMP_ROOT}/doctor_activate2.out" bash "${DOCTOR_SCRIPT}" --runtime-smoke worker "${target2}" >/dev/null
   printf "%s\n" \
     "<!-- aspera-orchestrator:policy:start -->" \
     "manual policy block" \
@@ -840,12 +945,23 @@ test_doctor_contracts() {
   if grep -q -- "classification=WORKER_SUCCESS" "${TMP_ROOT}/doctor_worker_smoke.out" \
     && grep -q -- "time_to_first_tool_seconds=" "${TMP_ROOT}/doctor_worker_smoke.out" \
     && grep -q -- "time_to_first_edit_seconds=" "${TMP_ROOT}/doctor_worker_smoke.out" \
+    && grep -q -- "first_edit_deadline_seconds=90.000" "${TMP_ROOT}/doctor_worker_smoke.out" \
+    && grep -q -- "guard_armed=1" "${TMP_ROOT}/doctor_worker_smoke.out" \
     && grep -q -- "ASPERA_WORKER_SMOKE_OK" "${TMP_ROOT}/doctor_worker_smoke.out" \
     && grep -q -- "input_tokens=100" "${TMP_ROOT}/doctor_worker_smoke.out"; then
     echo "[PASS] worker runtime smoke reports edit, handoff, timing, and usage"
     pass_count=$((pass_count + 1))
   else
     echo "[FAIL] worker runtime smoke output is incomplete"
+    failed=1
+  fi
+  if grep -q -- "PACKET_VERSION: 2" "${worker_args_file}" \
+    && grep -q -- "READY_STATE: IMPLEMENTATION_READY" "${worker_args_file}" \
+    && grep -q -- "EVIDENCE_ANCHORS:" "${worker_args_file}"; then
+    echo "[PASS] worker runtime smoke sends packet v2"
+    pass_count=$((pass_count + 1))
+  else
+    echo "[FAIL] worker runtime smoke packet v2 fields missing"
     failed=1
   fi
 
@@ -878,17 +994,17 @@ test_doctor_contracts() {
   fi
 
   local smoke_case expected_classification
-  for smoke_case in approval-blocked spawn-failure execution-failure first-tool-timeout first-edit-timeout handoff-timeout invalid-handoff; do
+  for smoke_case in approval-blocked spawn-failure execution-failure silent inspection-loop post-edit-hang invalid-handoff; do
     case "${smoke_case}" in
       approval-blocked) expected_classification="APPROVAL_BLOCKED" ;;
       spawn-failure) expected_classification="SPAWN_FAILURE" ;;
       execution-failure) expected_classification="EXECUTION_FAILURE" ;;
-      first-tool-timeout) expected_classification="FIRST_TOOL_TIMEOUT" ;;
-      first-edit-timeout) expected_classification="FIRST_EDIT_TIMEOUT" ;;
-      handoff-timeout) expected_classification="HANDOFF_TIMEOUT" ;;
+      silent) expected_classification="FIRST_EDIT_DEADLINE" ;;
+      inspection-loop) expected_classification="FIRST_EDIT_DEADLINE" ;;
+      post-edit-hang) expected_classification="SMOKE_HARNESS_TIMEOUT" ;;
       invalid-handoff) expected_classification="INVALID_HANDOFF" ;;
     esac
-    rc="$(ASPERA_STUB_SMOKE_RESULT="${smoke_case}" ASPERA_SMOKE_TIMEOUT_SECONDS=0.1 capture "${TMP_ROOT}/doctor_smoke_${smoke_case}.out" bash "${DOCTOR_SCRIPT}" --runtime-smoke worker "${smoke_target}")"
+    rc="$(ASPERA_STUB_SMOKE_RESULT="${smoke_case}" ASPERA_FIRST_EDIT_DEADLINE_SECONDS=0.1 ASPERA_SMOKE_TIMEOUT_SECONDS=0.2 capture "${TMP_ROOT}/doctor_smoke_${smoke_case}.out" bash "${DOCTOR_SCRIPT}" --runtime-smoke worker "${smoke_target}")"
     assert_exit "${rc}" "1" "worker runtime smoke rejects ${smoke_case}"
     if grep -q -- "classification=${expected_classification}" "${TMP_ROOT}/doctor_smoke_${smoke_case}.out"; then
       echo "[PASS] worker runtime smoke classifies ${smoke_case}"

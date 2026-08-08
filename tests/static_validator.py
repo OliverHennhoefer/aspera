@@ -320,8 +320,11 @@ def _check_worker_runtime_contract(repo_root: Path, plugin_dir: Path, results: L
         "sandbox/approval state",
         "working directory",
         "latest tool event",
-        "120",
-        "one corrective steer",
+        "90 seconds",
+        "four inspection",
+        "compaction",
+        "total",
+        "fresh worker",
         "failed delegation",
         "parent intervention",
     )
@@ -334,8 +337,12 @@ def _check_worker_runtime_contract(repo_root: Path, plugin_dir: Path, results: L
             ok(results, str(path), "worker lifecycle diagnosis contract is complete")
 
     worker_terms = (
-        "minimum context",
-        "begin tool work promptly",
+        "packet_version 2",
+        "evidence_anchors",
+        "apply_patch",
+        "four inspection",
+        "90 seconds",
+        "automatic compaction",
         "do not restate the plan",
         "blocked handoff",
         "unreported reasoning",
@@ -349,6 +356,45 @@ def _check_worker_runtime_contract(repo_root: Path, plugin_dir: Path, results: L
             fail(results, str(path), f"worker action contract missing: {', '.join(missing)}")
         else:
             ok(results, str(path), "worker action/blocking contract is complete")
+        with path.open("rb") as handle:
+            worker_data = tomllib.load(handle)
+        hooks = worker_data.get("hooks", {})
+        required_hooks = {"UserPromptSubmit", "PreToolUse", "PostToolUse", "PreCompact", "Stop"}
+        if set(hooks) != required_hooks:
+            fail(results, str(path), "worker hook set is incomplete or contains unexpected events")
+        elif any(
+            entry.get("hooks", [{}])[0].get("command")
+            != "python3 .codex/aspera-orchestrator/worker_guard.py"
+            for event in required_hooks
+            for entry in hooks[event]
+        ):
+            fail(results, str(path), "worker hooks do not use the managed guard")
+        else:
+            ok(results, str(path), "worker hooks use the exact managed guard")
+
+    guard_path = plugin_dir / "skills" / "setup" / "assets" / "worker_guard.py"
+    guard_text = _load_text(guard_path)
+    try:
+        compile(guard_text, str(guard_path), "exec")
+    except SyntaxError as exc:
+        fail(results, str(guard_path), f"worker guard syntax invalid: {exc}")
+    else:
+        guard_terms = (
+            'PACKET_VERSION = "2"',
+            "FIRST_EDIT_DEADLINE_SECONDS = 90.0",
+            "MAX_INSPECTIONS = 4",
+            "PACKET_REJECTED",
+            "NO_PROGRESS_BUDGET_EXHAUSTED",
+            "PRE_EDIT_COMPACTION",
+            "OWNERSHIP_VIOLATION",
+            "SHELL_MUTATION_BLOCKED",
+            "INVALID_HANDOFF",
+        )
+        missing_guard = [term for term in guard_terms if term not in guard_text]
+        if missing_guard:
+            fail(results, str(guard_path), f"worker guard contract missing: {', '.join(missing_guard)}")
+        else:
+            ok(results, str(guard_path), "worker guard state machine is complete")
 
     doctor_path = plugin_dir / "skills" / "setup" / "scripts" / "doctor.sh"
     common_path = plugin_dir / "skills" / "setup" / "scripts" / "common.sh"
@@ -361,10 +407,10 @@ def _check_worker_runtime_contract(repo_root: Path, plugin_dir: Path, results: L
         "approval_blocked",
         "spawn_failure",
         "execution_failure",
-        "first_tool_timeout",
-        "first_edit_timeout",
-        "handoff_timeout",
+        "first_edit_deadline",
+        "smoke_harness_timeout",
         "invalid_handoff",
+        "guard_armed",
         "aspera-worker-smoke.txt",
         "workspace-write",
         "--ignore-user-config",
@@ -387,6 +433,10 @@ def _check_worker_runtime_contract(repo_root: Path, plugin_dir: Path, results: L
         "interruption_reason",
         "worktree_changes_before_interrupt",
         "parent_takeover",
+        "packet_readiness_result",
+        "pre_edit_inspection_count",
+        "compactions_before_first_edit",
+        "guard_classification",
     }
     missing_metrics = sorted(telemetry.difference(metrics))
     if missing_metrics:
@@ -606,8 +656,8 @@ def _check_manifest_and_marketplace(plugin_dir: Path, repo_root: Path, results: 
     else:
         ok(results, str(manifest_path), "manifest name matches plugin folder")
 
-    if manifest.get("version") != "0.1.0":
-        fail(results, str(manifest_path), "manifest version must be 0.1.0")
+    if manifest.get("version") != "0.2.0":
+        fail(results, str(manifest_path), "manifest version must be 0.2.0")
 
     marketplace_path = repo_root / ".agents" / "plugins" / "marketplace.json"
     if not marketplace_path.is_file():

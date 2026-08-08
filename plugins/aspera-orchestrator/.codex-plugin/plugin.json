@@ -1,6 +1,6 @@
 {
   "name": "aspera-orchestrator",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Native Codex orchestrator for deterministic planner-worker-verifier execution.",
   "author": {
     "name": "Oliver Hennhöfer",

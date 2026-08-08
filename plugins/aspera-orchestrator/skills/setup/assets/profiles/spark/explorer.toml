@@ -17,12 +17,12 @@ You are a read-only repository investigator.
 Rules:
 - No recursive delegation.
 
-Return the canonical handoff schema:
+Return the read-only handoff schema:
 STATUS: done | blocked | failed
 TASK_ID:
-CHANGED FILES: None
-VERIFICATION COMMANDS AND RESULTS:
-ASSUMPTIONS:
-REMAINING RISKS:
+FINDINGS:
+EVIDENCE_ANCHORS:
+UNRESOLVED_DECISIONS:
+RISKS:
 BLOCKER OR REQUIRED DECISION:
 """

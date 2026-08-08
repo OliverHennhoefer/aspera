@@ -7,7 +7,9 @@ ASPERA_POLICY_MARKER_START='<!-- aspera-orchestrator:policy:start -->'
 ASPERA_POLICY_MARKER_END='<!-- aspera-orchestrator:policy:end -->'
 ASPERA_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ASPERA_POLICY_SRC="${ASPERA_SCRIPT_DIR}/../../orchestrate/references/policy.md"
-ASPERA_ASSETS_DIR="${ASPERA_SCRIPT_DIR}/../assets/profiles"
+ASPERA_SETUP_ASSETS_DIR="${ASPERA_SCRIPT_DIR}/../assets"
+ASPERA_ASSETS_DIR="${ASPERA_SETUP_ASSETS_DIR}/profiles"
+ASPERA_GUARD_SRC="${ASPERA_SETUP_ASSETS_DIR}/worker_guard.py"
 ASPERA_STATE_FILE_REL='.codex/aspera-orchestrator/state.json'
 ASPERA_STATE_BACKUP_DIR_REL='.codex/aspera-orchestrator/backups'
 ASPERA_AGENTS_FILE_REL='AGENTS.md'
@@ -17,6 +19,7 @@ ASPERA_MANAGED_FILES=(
   '.codex/agents/aspera-verifier.toml'
   '.codex/agents/aspera-researcher.toml'
   '.codex/agents/aspera-reviewer.toml'
+  '.codex/aspera-orchestrator/worker_guard.py'
 )
 
 aspera_err() {
@@ -170,11 +173,11 @@ import sys
 with open(sys.argv[1], 'r', encoding='utf-8') as f:
     d = json.load(f)
 
-if d.get('schema_version') != 1:
+if d.get('schema_version') != 2:
     raise SystemExit(1)
 if d.get('plugin') != 'aspera-orchestrator':
     raise SystemExit(1)
-if d.get('plugin_version') != '0.1.0':
+if d.get('plugin_version') != '0.2.0':
     raise SystemExit(1)
 
 profile = d.get('profile')
@@ -184,7 +187,8 @@ if profile not in ('spark', 'luna'):
 models = d.get('models')
 efforts = d.get('efforts')
 managed = d.get('managed_files')
-if not isinstance(models, dict) or not isinstance(efforts, dict) or not isinstance(managed, dict):
+guard = d.get('guard')
+if not isinstance(models, dict) or not isinstance(efforts, dict) or not isinstance(managed, dict) or not isinstance(guard, dict):
     raise SystemExit(1)
 
 required = {'primary', 'researcher', 'reviewer'}
@@ -228,6 +232,7 @@ required_managed = {
     '.codex/agents/aspera-verifier.toml',
     '.codex/agents/aspera-researcher.toml',
     '.codex/agents/aspera-reviewer.toml',
+    '.codex/aspera-orchestrator/worker_guard.py',
 }
 if set(managed.keys()) != required_managed:
     raise SystemExit(1)
@@ -235,6 +240,18 @@ for key in required_managed:
     value = managed.get(key)
     if not isinstance(value, str) or re.fullmatch(r'[0-9a-f]{64}', value) is None:
         raise SystemExit(1)
+
+if set(guard.keys()) != {'required', 'verified', 'profile', 'asset_hash', 'verified_at'}:
+    raise SystemExit(1)
+if guard.get('required') is not True or not isinstance(guard.get('verified'), bool):
+    raise SystemExit(1)
+if guard.get('asset_hash') != managed['.codex/aspera-orchestrator/worker_guard.py']:
+    raise SystemExit(1)
+if guard['verified']:
+    if guard.get('profile') != profile or not isinstance(guard.get('verified_at'), str) or not guard['verified_at']:
+        raise SystemExit(1)
+elif guard.get('profile') != '' or guard.get('verified_at') != '':
+    raise SystemExit(1)
 
 policy_installed = d.get('policy_installed')
 if not isinstance(policy_installed, bool):
@@ -276,6 +293,35 @@ with open(sys.argv[1], 'r', encoding='utf-8') as f:
     d = json.load(f)
 print(d.get('managed_files', {}).get(sys.argv[2], ''))
 PY2
+}
+
+asp_mark_guard_verified() {
+  local state_file="$1"
+  local profile="$2"
+  local guard_hash="$3"
+  local tmp="${state_file}.tmp.$$.$RANDOM"
+  python3 - "$state_file" "$tmp" "$profile" "$guard_hash" <<'PY2'
+import datetime
+import json
+import pathlib
+import sys
+
+source, target, profile, guard_hash = sys.argv[1:5]
+data = json.loads(pathlib.Path(source).read_text(encoding='utf-8'))
+if data.get('schema_version') != 2:
+    raise SystemExit(1)
+if data.get('managed_files', {}).get('.codex/aspera-orchestrator/worker_guard.py') != guard_hash:
+    raise SystemExit(1)
+data['guard'] = {
+    'required': True,
+    'verified': True,
+    'profile': profile,
+    'asset_hash': guard_hash,
+    'verified_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+}
+pathlib.Path(target).write_text(json.dumps(data, indent=2) + '\n', encoding='utf-8')
+PY2
+  mv "$tmp" "$state_file"
 }
 
 asp_preflight_models() {
@@ -503,6 +549,34 @@ print(hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest())
 PY2
 }
 
+asp_validate_guard_asset() {
+  if [ ! -f "$ASPERA_GUARD_SRC" ]; then
+    aspera_err "missing worker guard asset $ASPERA_GUARD_SRC"
+  fi
+  python3 - "$ASPERA_GUARD_SRC" <<'PY2'
+import hashlib
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+text = path.read_text(encoding='utf-8')
+required = (
+    'PACKET_VERSION = "2"',
+    'FIRST_EDIT_DEADLINE_SECONDS = 90.0',
+    'MAX_INSPECTIONS = 4',
+    'UserPromptSubmit',
+    'PreToolUse',
+    'PostToolUse',
+    'PreCompact',
+    'Stop',
+)
+if any(term not in text for term in required):
+    raise SystemExit(1)
+compile(text, str(path), 'exec')
+print(hashlib.sha256(path.read_bytes()).hexdigest())
+PY2
+}
+
 asp_policy_scan() {
   local file="$1"
   [ -f "$file" ] || { echo missing; return 0; }
@@ -544,6 +618,17 @@ if start == -1:
 else:
     start = start + 1
 block = text[start:end].strip('\n')
+print(hashlib.sha256(block.encode('utf-8')).hexdigest())
+PY2
+}
+
+asp_policy_source_hash() {
+  local file="$1"
+  python3 - "$file" <<'PY2'
+import hashlib
+import pathlib
+import sys
+block = pathlib.Path(sys.argv[1]).read_text(encoding='utf-8').strip('\n')
 print(hashlib.sha256(block.encode('utf-8')).hexdigest())
 PY2
 }
@@ -648,19 +733,22 @@ import tempfile
 import time
 
 bin_path, smoke_kind, target, out_file, status_file = sys.argv[1:6]
-timeout = float(os.environ.get("ASPERA_SMOKE_TIMEOUT_SECONDS", "120"))
-if timeout <= 0:
-    raise SystemExit("ASPERA_SMOKE_TIMEOUT_SECONDS must be greater than zero")
+smoke_timeout = float(os.environ.get("ASPERA_SMOKE_TIMEOUT_SECONDS", "300"))
+first_edit_deadline = float(os.environ.get("ASPERA_FIRST_EDIT_DEADLINE_SECONDS", "90"))
+if smoke_timeout <= 0 or first_edit_deadline <= 0:
+    raise SystemExit("smoke and first-edit deadlines must be greater than zero")
 
 
-def write_status(classification, duration, first_tool=None, first_edit=None):
+def write_status(classification, duration, first_tool=None, first_edit=None, guard_armed=False):
     first_tool_value = "unavailable" if first_tool is None else f"{first_tool:.3f}"
     first_edit_value = "unavailable" if first_edit is None else f"{first_edit:.3f}"
     pathlib.Path(status_file).write_text(
         f"classification={classification}\n"
         f"duration_seconds={duration:.3f}\n"
         f"time_to_first_tool_seconds={first_tool_value}\n"
-        f"time_to_first_edit_seconds={first_edit_value}\n",
+        f"time_to_first_edit_seconds={first_edit_value}\n"
+        f"first_edit_deadline_seconds={first_edit_deadline:.3f}\n"
+        f"guard_armed={'1' if guard_armed else '0'}\n",
         encoding="utf-8",
     )
 
@@ -709,19 +797,33 @@ elif smoke_kind == "worker":
     agents_source = pathlib.Path(target) / ".codex" / "agents"
     for source in agents_source.glob("aspera-*.toml"):
         shutil.copy2(source, agents_target / source.name)
+    guard_source = pathlib.Path(target) / ".codex" / "aspera-orchestrator" / "worker_guard.py"
+    guard_target = run_root / ".codex" / "aspera-orchestrator" / "worker_guard.py"
+    guard_target.parent.mkdir(parents=True)
+    shutil.copy2(guard_source, guard_target)
     sentinel = run_root / "aspera-worker-smoke.txt"
     sandbox = "workspace-write"
     prompt = """Spawn aspera_worker with exactly this bounded packet. The parent must not edit files.
 
+PACKET_VERSION: 2
 TASK_ID: ASPERA_RUNTIME_WORKER
 OBJECTIVE: Create aspera-worker-smoke.txt containing exactly ASPERA_WORKER_SMOKE_OK followed by one newline.
-OWNED_PATHS: aspera-worker-smoke.txt
-READ_ONLY_CONTEXT: The isolated smoke workspace contains only project-scoped Aspera agent profiles.
+READY_STATE: IMPLEMENTATION_READY
+OWNED_PATHS:
+- aspera-worker-smoke.txt
+EVIDENCE_ANCHORS:
+- .codex/agents/aspera-worker.toml::PACKET_VERSION 2
 INTERFACE_CONTRACTS: The sentinel file content is the complete public result.
-CONSTRAINTS: Do not edit any other path. Do not delegate. Begin tool work promptly.
+INVARIANTS: Do not edit any other path. Do not delegate. Preserve the exact trailing newline.
 NON_GOALS: Do not inspect or modify the user's repository.
-IMPLEMENTATION_STEPS: 1. Create the sentinel. 2. Read it back. 3. Return the handoff.
-VERIFICATION: Verify the exact sentinel content including its trailing newline.
+IMPLEMENTATION_STEPS:
+1. Confirm the supplied worker-profile evidence anchor.
+2. Create the sentinel with apply_patch.
+3. Run the exact verification command and return the handoff.
+ACCEPTANCE_CRITERIA: The owned sentinel exists with exactly ASPERA_WORKER_SMOKE_OK followed by one newline.
+VERIFICATION:
+- COMMAND: python3 -c "from pathlib import Path; assert Path('aspera-worker-smoke.txt').read_bytes() == b'ASPERA_WORKER_SMOKE_OK\\n'"
+  EXPECTED: Exit status 0.
 STOP_CONDITIONS: Return blocked immediately if the owned file cannot be written.
 HANDOFF_FORMAT: STATUS: done | blocked | failed; TASK_ID:; CHANGED FILES:; VERIFICATION COMMANDS AND RESULTS:; ASSUMPTIONS:; REMAINING RISKS:; BLOCKER OR REQUIRED DECISION:
 
@@ -751,6 +853,7 @@ started = time.monotonic()
 first_tool = None
 first_edit = None
 timed_out = False
+deadline_classification = None
 with open(out_file, "w", encoding="utf-8") as out:
     proc = subprocess.Popen(cmd, stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
     while proc.poll() is None:
@@ -759,8 +862,13 @@ with open(out_file, "w", encoding="utf-8") as out:
             first_tool = elapsed
         if sentinel is not None and first_edit is None and sentinel.exists():
             first_edit = elapsed
-        if elapsed >= timeout:
+        if sentinel is not None and first_edit is None and elapsed >= first_edit_deadline:
             timed_out = True
+            deadline_classification = "FIRST_EDIT_DEADLINE"
+        elif elapsed >= smoke_timeout:
+            timed_out = True
+            deadline_classification = "SMOKE_HARNESS_TIMEOUT"
+        if timed_out:
             try:
                 os.killpg(proc.pid, signal.SIGKILL)
             except ProcessLookupError:
@@ -775,15 +883,11 @@ if first_tool is None and output_has_tool_event():
 if sentinel is not None and first_edit is None and sentinel.exists():
     first_edit = duration
 output = pathlib.Path(out_file).read_text(encoding="utf-8", errors="replace")
+guard_armed = "ASPERA_GUARD_ARMED" in output
 
 if timed_out:
-    if first_tool is None:
-        classification = "FIRST_TOOL_TIMEOUT"
-    elif first_edit is None:
-        classification = "FIRST_EDIT_TIMEOUT"
-    else:
-        classification = "HANDOFF_TIMEOUT"
-    write_status(classification, duration, first_tool, first_edit)
+    classification = deadline_classification or "SMOKE_HARNESS_TIMEOUT"
+    write_status(classification, duration, first_tool, first_edit, guard_armed)
     if temp_context is not None:
         temp_context.cleanup()
     raise SystemExit(1)
@@ -797,7 +901,7 @@ if proc.returncode != 0:
         classification = "SPAWN_FAILURE"
     else:
         classification = "EXECUTION_FAILURE"
-    write_status(classification, duration, first_tool, first_edit)
+    write_status(classification, duration, first_tool, first_edit, guard_armed)
     if temp_context is not None:
         temp_context.cleanup()
     raise SystemExit(1)
@@ -810,6 +914,7 @@ else:
     elif sentinel.read_bytes() != b"ASPERA_WORKER_SMOKE_OK\n":
         classification = "INVALID_EDIT"
     elif not all(marker in output for marker in (
+        "ASPERA_GUARD_ARMED",
         "ASPERA_WORKER_SMOKE_OK",
         "STATUS: done",
         "TASK_ID: ASPERA_RUNTIME_WORKER",
@@ -818,7 +923,7 @@ else:
     else:
         classification = "WORKER_SUCCESS"
 
-write_status(classification, duration, first_tool, first_edit)
+write_status(classification, duration, first_tool, first_edit, guard_armed)
 if temp_context is not None:
     temp_context.cleanup()
 raise SystemExit(0 if classification in {"EXPLORER_SUCCESS", "WORKER_SUCCESS"} else 1)

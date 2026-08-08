@@ -58,6 +58,10 @@ if [[ "$1" == "exec" ]]; then
       echo '{"type":"error","message":"worker profile missing"}'
       exit 7
     fi
+    if [[ ! -f "${smoke_root}/.codex/aspera-orchestrator/worker_guard.py" ]]; then
+      echo '{"type":"error","message":"worker guard missing"}'
+      exit 7
+    fi
     case "${ASPERA_STUB_SMOKE_RESULT:-success}" in
       approval-blocked)
         echo '{"type":"error","message":"approval required for worker edit"}'
@@ -71,14 +75,14 @@ if [[ "$1" == "exec" ]]; then
         echo '{"type":"error","message":"worker runtime failed"}'
         exit 11
         ;;
-      first-tool-timeout)
+      silent)
         sleep 2
         ;;
-      first-edit-timeout)
+      inspection-loop)
         echo '{"type":"item.completed","item":{"type":"collab_tool_call","status":"completed"}}'
         sleep 2
         ;;
-      handoff-timeout)
+      post-edit-hang)
         echo '{"type":"item.completed","item":{"type":"collab_tool_call","status":"completed"}}'
         printf '%s\n' 'ASPERA_WORKER_SMOKE_OK' > "${smoke_root}/aspera-worker-smoke.txt"
         sleep 2
@@ -95,6 +99,7 @@ if [[ "$1" == "exec" ]]; then
         exit 10
         ;;
     esac
+    echo '{"type":"item.completed","item":{"type":"agent_message","text":"ASPERA_GUARD_ARMED TASK_ID=ASPERA_RUNTIME_WORKER"}}'
     echo '{"type":"item.completed","item":{"type":"collab_tool_call","status":"completed"}}'
     printf '%s\n' 'ASPERA_WORKER_SMOKE_OK' > "${smoke_root}/aspera-worker-smoke.txt"
     printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"ASPERA_WORKER_SMOKE_OK\nSTATUS: done\nTASK_ID: ASPERA_RUNTIME_WORKER"}}'
