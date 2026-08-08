@@ -1,0 +1,43 @@
+{
+  "name": "orchestrator",
+  "version": "0.1.0",
+  "description": "Project-scoped Codex-native orchestrator with deterministic task format and Spark, Luna, and Terra role profiles.",
+  "author": {
+    "name": "Oliver Hennhöfer",
+    "email": "oliver.hennhoefer@mail.de",
+    "url": "https://github.com/OliverHennhoefer"
+  },
+  "homepage": "https://github.com/OliverHennhoefer/aspera",
+  "repository": "https://github.com/OliverHennhoefer/aspera",
+  "license": "MIT",
+    "keywords": [
+    "codex",
+    "subagent",
+    "orchestrator",
+    "spark",
+    "terra",
+    "luna",
+    "agentic"
+  ],
+  "skills": "./skills",
+  "interface": {
+    "displayName": "Native Codex Orchestrator",
+    "shortDescription": "Explicit-task Spark/Luna/Terra orchestration for bounded implementation, verification, and risk-gated review",
+    "longDescription": "A minimal Codex orchestrator blueprint: strict task packets, parallel read-only exploration, bounded edits, and structured verification.",
+    "developerName": "Aspera",
+    "category": "Productivity",
+    "capabilities": [
+      "Code",
+      "Verification",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/OliverHennhoefer/aspera",
+    "defaultPrompt": [
+      "Create a bounded task packet for a single file edit.",
+      "Install orchestrator profiles into .codex now.",
+      "Run the orchestrator doctor check."
+    ],
+    "brandColor": "#0284C7"
+  }
+}
