@@ -150,6 +150,8 @@ ASPERA_CODEX_BIN="<path-to-codex>" bash "<path-to-aspera>/plugins/aspera-orchest
 - **Spark is unavailable:** confirm ChatGPT Pro access and try the Luna profile. A newer client alone does not grant Spark access.
 - **An updated plugin is not visible:** reinstall the plugin and start a new conversation.
 - **Drift detected:** review the changed managed files before using `--force`.
+- **Worker appears stalled:** inspect its thread, effective permissions, working directory, and latest tool event. Quota movement or a clean worktree alone does not prove success or failure.
+- **Runtime smoke:** `doctor.sh --runtime-smoke explorer TARGET` checks role discovery. `doctor.sh --runtime-smoke worker TARGET` runs paid parent and worker model activity and validates a deterministic edit in an isolated temporary workspace. Each has a 120-second timeout and reports usage exposed by the CLI.
 
 ## Evaluation status
 

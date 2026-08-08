@@ -362,15 +362,17 @@ test_stub_contract() {
   local out="${TMP_ROOT}/stub_exec.out"
   local args_file="${TMP_ROOT}/stub_exec_args.txt"
   local rc
-  rc="$(ASPERA_SMOKE_ARGS_FILE="${args_file}" capture "${out}" bash "${STUB_BIN}" exec --cd "${WORK_ROOT}" --skip-git-repo-check --ephemeral --sandbox read-only "You are the scoped smoke checker. Spawn aspera_explorer in an isolated context only. Respond with exactly: ASPERA_SMOKE_OK")"
+  rc="$(ASPERA_SMOKE_ARGS_FILE="${args_file}" capture "${out}" bash "${STUB_BIN}" exec --cd "${WORK_ROOT}" --skip-git-repo-check --ephemeral --ignore-user-config --sandbox read-only --json "Spawn aspera_explorer and respond with ASPERA_EXPLORER_SMOKE_OK")"
   assert_exit "${rc}" "0" "stub supports codex exec"
   if [[ -f "${args_file}" ]]; then
     if grep -q -- "--cd" "${args_file}" \
       && grep -q -- "${WORK_ROOT}" "${args_file}" \
       && grep -q -- "--skip-git-repo-check" "${args_file}" \
       && grep -q -- "--ephemeral" "${args_file}" \
+      && grep -q -- "--ignore-user-config" "${args_file}" \
       && grep -q -- "--sandbox" "${args_file}" \
-      && grep -q -- "read-only" "${args_file}"; then
+      && grep -q -- "read-only" "${args_file}" \
+      && grep -q -- "--json" "${args_file}"; then
       echo "[PASS] stub records smoke exec arguments"
       pass_count=$((pass_count + 1))
     else
@@ -382,11 +384,11 @@ test_stub_contract() {
     failed=1
   fi
 
-  if grep -q -- "ASPERA_SMOKE_OK" "${out}"; then
-    echo "[PASS] stub returns ASPERA_SMOKE_OK"
+  if grep -q -- "ASPERA_EXPLORER_SMOKE_OK" "${out}"; then
+    echo "[PASS] stub returns ASPERA_EXPLORER_SMOKE_OK"
     pass_count=$((pass_count + 1))
   else
-    echo "[FAIL] stub smoke run output did not include ASPERA_SMOKE_OK"
+    echo "[FAIL] stub smoke run output did not include ASPERA_EXPLORER_SMOKE_OK"
     failed=1
   fi
 }
@@ -805,32 +807,97 @@ test_doctor_contracts() {
   rm -rf "${smoke_target}"
   mkdir -p "${smoke_target}"
   capture "${TMP_ROOT}/doctor_smoke_install.out" bash "${INSTALL_SCRIPT}" "${smoke_target}" >/dev/null
-  local args_file="${TMP_ROOT}/doctor_smoke_args.txt"
-  rc="$(ASPERA_SMOKE_ARGS_FILE="${args_file}" capture "${TMP_ROOT}/doctor_smoke.out" bash "${DOCTOR_SCRIPT}" --runtime-smoke "${smoke_target}")"
-  assert_exit "${rc}" "0" "runtime smoke command exits successfully"
-  if grep -q -- "ASPERA_SMOKE_OK" "${TMP_ROOT}/doctor_smoke.out"; then
-    echo "[PASS] runtime smoke outputs ASPERA_SMOKE_OK"
+  local explorer_args_file="${TMP_ROOT}/doctor_explorer_smoke_args.txt"
+  rc="$(ASPERA_SMOKE_ARGS_FILE="${explorer_args_file}" capture "${TMP_ROOT}/doctor_explorer_smoke.out" bash "${DOCTOR_SCRIPT}" --runtime-smoke explorer "${smoke_target}")"
+  assert_exit "${rc}" "0" "explorer runtime smoke exits successfully"
+  if grep -q -- "classification=EXPLORER_SUCCESS" "${TMP_ROOT}/doctor_explorer_smoke.out" \
+    && grep -q -- "ASPERA_EXPLORER_SMOKE_OK" "${TMP_ROOT}/doctor_explorer_smoke.out"; then
+    echo "[PASS] explorer runtime smoke reports a valid handoff"
     pass_count=$((pass_count + 1))
   else
-    echo "[FAIL] runtime smoke does not output ASPERA_SMOKE_OK"
+    echo "[FAIL] explorer runtime smoke does not report a valid handoff"
     failed=1
   fi
-  if [[ -f "${args_file}" ]]; then
-    if grep -q -- "--cd" "${args_file}" \
-      && grep -q -- "${smoke_target}" "${args_file}" \
-      && grep -q -- "--skip-git-repo-check" "${args_file}" \
-      && grep -q -- "--sandbox" "${args_file}" \
-      && grep -q -- "read-only" "${args_file}"; then
-      echo "[PASS] runtime smoke records expected exec arguments"
+  if [[ -f "${explorer_args_file}" ]]; then
+    if grep -q -- "${smoke_target}" "${explorer_args_file}" \
+      && grep -q -- "--sandbox" "${explorer_args_file}" \
+      && grep -q -- "read-only" "${explorer_args_file}" \
+      && grep -q -- "--json" "${explorer_args_file}"; then
+      echo "[PASS] explorer runtime smoke records expected exec arguments"
       pass_count=$((pass_count + 1))
     else
-      echo "[FAIL] runtime smoke exec arguments missing expected values"
+      echo "[FAIL] explorer runtime smoke exec arguments missing expected values"
       failed=1
     fi
   else
-    echo "[FAIL] runtime smoke did not record args"
+    echo "[FAIL] explorer runtime smoke did not record args"
     failed=1
   fi
+
+  local worker_args_file="${TMP_ROOT}/doctor_worker_smoke_args.txt"
+  rc="$(ASPERA_SMOKE_ARGS_FILE="${worker_args_file}" capture "${TMP_ROOT}/doctor_worker_smoke.out" bash "${DOCTOR_SCRIPT}" --runtime-smoke worker "${smoke_target}")"
+  assert_exit "${rc}" "0" "worker runtime smoke exits successfully"
+  if grep -q -- "classification=WORKER_SUCCESS" "${TMP_ROOT}/doctor_worker_smoke.out" \
+    && grep -q -- "time_to_first_tool_seconds=" "${TMP_ROOT}/doctor_worker_smoke.out" \
+    && grep -q -- "time_to_first_edit_seconds=" "${TMP_ROOT}/doctor_worker_smoke.out" \
+    && grep -q -- "ASPERA_WORKER_SMOKE_OK" "${TMP_ROOT}/doctor_worker_smoke.out" \
+    && grep -q -- "input_tokens=100" "${TMP_ROOT}/doctor_worker_smoke.out"; then
+    echo "[PASS] worker runtime smoke reports edit, handoff, timing, and usage"
+    pass_count=$((pass_count + 1))
+  else
+    echo "[FAIL] worker runtime smoke output is incomplete"
+    failed=1
+  fi
+
+  local worker_smoke_root
+  worker_smoke_root="$(awk 'previous == "--cd" { print; exit } { previous = $0 }' "${worker_args_file}")"
+  if [[ -n "${worker_smoke_root}" \
+    && "${worker_smoke_root}" != "${smoke_target}" \
+    && ! -e "${worker_smoke_root}" \
+    && ! -e "${smoke_target}/aspera-worker-smoke.txt" ]] \
+    && grep -q -- "workspace-write" "${worker_args_file}" \
+    && grep -q -- "--ignore-user-config" "${worker_args_file}"; then
+    echo "[PASS] worker runtime smoke uses and cleans an isolated workspace"
+    pass_count=$((pass_count + 1))
+  else
+    echo "[FAIL] worker runtime smoke isolation contract failed"
+    failed=1
+  fi
+
+  rc="$(capture "${TMP_ROOT}/doctor_invalid_smoke.out" bash "${DOCTOR_SCRIPT}" --runtime-smoke invalid "${smoke_target}")"
+  assert_exit "${rc}" "1" "doctor rejects an invalid runtime smoke kind"
+
+  rc="$(ASPERA_STUB_CATALOG="${TMP_ROOT}/missing_spark.json" capture "${TMP_ROOT}/doctor_model_catalog_smoke.out" bash "${DOCTOR_SCRIPT}" --runtime-smoke worker "${smoke_target}")"
+  assert_exit "${rc}" "1" "worker runtime smoke rejects unavailable profile models"
+  if grep -q -- "classification=MODEL_CATALOG_FAILURE" "${TMP_ROOT}/doctor_model_catalog_smoke.out"; then
+    echo "[PASS] worker runtime smoke classifies model catalog failure"
+    pass_count=$((pass_count + 1))
+  else
+    echo "[FAIL] worker runtime smoke does not classify model catalog failure"
+    failed=1
+  fi
+
+  local smoke_case expected_classification
+  for smoke_case in approval-blocked spawn-failure execution-failure first-tool-timeout first-edit-timeout handoff-timeout invalid-handoff; do
+    case "${smoke_case}" in
+      approval-blocked) expected_classification="APPROVAL_BLOCKED" ;;
+      spawn-failure) expected_classification="SPAWN_FAILURE" ;;
+      execution-failure) expected_classification="EXECUTION_FAILURE" ;;
+      first-tool-timeout) expected_classification="FIRST_TOOL_TIMEOUT" ;;
+      first-edit-timeout) expected_classification="FIRST_EDIT_TIMEOUT" ;;
+      handoff-timeout) expected_classification="HANDOFF_TIMEOUT" ;;
+      invalid-handoff) expected_classification="INVALID_HANDOFF" ;;
+    esac
+    rc="$(ASPERA_STUB_SMOKE_RESULT="${smoke_case}" ASPERA_SMOKE_TIMEOUT_SECONDS=0.1 capture "${TMP_ROOT}/doctor_smoke_${smoke_case}.out" bash "${DOCTOR_SCRIPT}" --runtime-smoke worker "${smoke_target}")"
+    assert_exit "${rc}" "1" "worker runtime smoke rejects ${smoke_case}"
+    if grep -q -- "classification=${expected_classification}" "${TMP_ROOT}/doctor_smoke_${smoke_case}.out"; then
+      echo "[PASS] worker runtime smoke classifies ${smoke_case}"
+      pass_count=$((pass_count + 1))
+    else
+      echo "[FAIL] worker runtime smoke misclassified ${smoke_case}"
+      failed=1
+    fi
+  done
 }
 
 test_uninstall_contracts() {

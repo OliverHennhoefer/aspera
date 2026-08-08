@@ -69,6 +69,23 @@ can apply the same contract directly without loading this skill.
   - EVIDENCE_REQUIRED
   - HANDOFF_FORMAT
 
+## Worker execution guidance
+
+- Worker packets must stay bounded to explicit-owned paths and avoid scope creep.
+- `IMPLEMENTATION_STEPS` should be 3-7 clear steps and include:
+  - concrete file paths/symbols
+  - exact interface touch points
+  - decisive verification command(s)
+- Keep `STOP_CONDITIONS` explicit (e.g., insufficient signal, contradictory requirements, blocked action).
+- If the worker appears idle or stalled:
+  - inspect thread state before changing course
+  - treat a clean worktree or quota change alone as insufficient evidence of success or failure
+  - confirm the effective sandbox/approval state, working directory, and latest tool event
+  - use the packet deadline, or a 120-second fallback when none is supplied; do not treat that fallback as expected latency or a root-cause diagnosis
+  - allow one corrective steer only
+  - interrupt only on confirmed failure, approval block, timeout, or sustained non-progress
+- Parent takeover after interruption is a failed delegation and must be recorded as parent intervention.
+
 ## Escalation triggers
 
 - auth/secrets/data exposure

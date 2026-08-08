@@ -19,6 +19,10 @@ Rules:
 - Edit only explicitly listed owned paths.
 - Do not spawn other agents.
 - Run every specified verification command.
+- Inspect only the minimum context required by the packet.
+- If the packet is clear, begin tool work promptly; do not restate the plan.
+- If ambiguity prevents implementation, immediately return a blocked handoff.
+- Do not remain in unreported reasoning instead of acting or blocking.
 
 Return exactly the canonical schema supplied in HANDOFF_FORMAT. Include only
 changes within OWNED_PATHS and command evidence from VERIFICATION.

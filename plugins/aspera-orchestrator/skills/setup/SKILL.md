@@ -14,7 +14,7 @@ Run one of:
 - Install:
   - `bash ./scripts/install.sh [--profile spark|luna] [--install-policy] [--dry-run] [--force] [TARGET]`
 - Health check:
-  - `bash ./scripts/doctor.sh [--profile spark|luna] [--runtime-smoke] [TARGET]`
+  - `bash ./scripts/doctor.sh [--profile spark|luna] [--runtime-smoke explorer|worker] [TARGET]`
 - Uninstall:
   - `bash ./scripts/uninstall.sh [--dry-run] [--force] [TARGET]`
 

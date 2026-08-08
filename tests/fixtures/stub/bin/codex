@@ -43,8 +43,65 @@ if [[ "$1" == "exec" ]]; then
   if [[ -n "${ASPERA_SMOKE_ARGS_FILE:-}" ]]; then
     printf '%s\n' "$@" > "${ASPERA_SMOKE_ARGS_FILE}"
   fi
-  echo "ASPERA_SMOKE_ARGS=$*"
-  echo "ASPERA_SMOKE_OK"
+  smoke_root=""
+  previous=""
+  for argument in "$@"; do
+    if [[ "${previous}" == "--cd" ]]; then
+      smoke_root="${argument}"
+      break
+    fi
+    previous="${argument}"
+  done
+
+  if [[ "$*" == *"aspera_worker"* ]]; then
+    if [[ ! -f "${smoke_root}/.codex/agents/aspera-worker.toml" ]]; then
+      echo '{"type":"error","message":"worker profile missing"}'
+      exit 7
+    fi
+    case "${ASPERA_STUB_SMOKE_RESULT:-success}" in
+      approval-blocked)
+        echo '{"type":"error","message":"approval required for worker edit"}'
+        exit 8
+        ;;
+      spawn-failure)
+        echo '{"type":"error","message":"worker spawn failed"}'
+        exit 9
+        ;;
+      execution-failure)
+        echo '{"type":"error","message":"worker runtime failed"}'
+        exit 11
+        ;;
+      first-tool-timeout)
+        sleep 2
+        ;;
+      first-edit-timeout)
+        echo '{"type":"item.completed","item":{"type":"collab_tool_call","status":"completed"}}'
+        sleep 2
+        ;;
+      handoff-timeout)
+        echo '{"type":"item.completed","item":{"type":"collab_tool_call","status":"completed"}}'
+        printf '%s\n' 'ASPERA_WORKER_SMOKE_OK' > "${smoke_root}/aspera-worker-smoke.txt"
+        sleep 2
+        ;;
+      invalid-handoff)
+        echo '{"type":"item.completed","item":{"type":"collab_tool_call","status":"completed"}}'
+        printf '%s\n' 'ASPERA_WORKER_SMOKE_OK' > "${smoke_root}/aspera-worker-smoke.txt"
+        echo '{"type":"item.completed","item":{"type":"agent_message","text":"incomplete"}}'
+        exit 0
+        ;;
+      success) ;;
+      *)
+        echo '{"type":"error","message":"invalid stub smoke result"}'
+        exit 10
+        ;;
+    esac
+    echo '{"type":"item.completed","item":{"type":"collab_tool_call","status":"completed"}}'
+    printf '%s\n' 'ASPERA_WORKER_SMOKE_OK' > "${smoke_root}/aspera-worker-smoke.txt"
+    printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"ASPERA_WORKER_SMOKE_OK\nSTATUS: done\nTASK_ID: ASPERA_RUNTIME_WORKER"}}'
+  else
+    printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"ASPERA_EXPLORER_SMOKE_OK"}}'
+  fi
+  printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":100,"cached_input_tokens":25,"output_tokens":20,"reasoning_tokens":10}}'
   exit 0
 fi
 

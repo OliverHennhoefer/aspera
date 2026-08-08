@@ -12,6 +12,14 @@
 - Direct mode remains parent-only and performs no delegation.
 - Do not apply Aspera orchestration to reviews, explanations, status requests, setup, doctor, installation, or uninstall work; use the applicable workflow or skill instead.
 
+## Worker lifecycle protocol
+
+- A clean worktree or quota change alone does not prove worker success or failure.
+- Inspect the active thread, effective sandbox/approval state, working directory, and latest tool event before any corrective steer.
+- Use the packet deadline when present; otherwise use 120 seconds as a conservative fallback before classifying non-progress. This is not an expected latency or root-cause diagnosis.
+- Issue at most one corrective steer per task, only when ambiguity exists or non-progress is visible.
+- Interrupt only on confirmed failure, approval block, task timeout, or sustained non-progress; parent takeover is recorded as failed delegation with parent intervention.
+
 ## Operating model
 
 - Parent is architecture owner and final authority.

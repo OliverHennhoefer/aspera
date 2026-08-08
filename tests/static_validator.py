@@ -308,6 +308,93 @@ def _check_orchestrate_activation_rules(repo_root: Path, plugin_dir: Path, resul
         ok(results, str(managed_policy), "managed policy is portable and skill-attachment independent")
 
 
+def _check_worker_runtime_contract(repo_root: Path, plugin_dir: Path, results: List[ValidationResult]) -> None:
+    lifecycle_paths = (
+        repo_root / "AGENTS.md",
+        plugin_dir / "skills" / "orchestrate" / "SKILL.md",
+        plugin_dir / "skills" / "orchestrate" / "references" / "policy.md",
+    )
+    lifecycle_terms = (
+        "clean worktree",
+        "quota change",
+        "sandbox/approval state",
+        "working directory",
+        "latest tool event",
+        "120",
+        "one corrective steer",
+        "failed delegation",
+        "parent intervention",
+    )
+    for path in lifecycle_paths:
+        text = _load_text(path).lower()
+        missing = [term for term in lifecycle_terms if term not in text]
+        if missing:
+            fail(results, str(path), f"worker lifecycle contract missing: {', '.join(missing)}")
+        else:
+            ok(results, str(path), "worker lifecycle diagnosis contract is complete")
+
+    worker_terms = (
+        "minimum context",
+        "begin tool work promptly",
+        "do not restate the plan",
+        "blocked handoff",
+        "unreported reasoning",
+        "verification command",
+    )
+    for profile in ("spark", "luna"):
+        path = plugin_dir / "skills" / "setup" / "assets" / "profiles" / profile / "worker.toml"
+        text = _load_text(path).lower()
+        missing = [term for term in worker_terms if term not in text]
+        if missing:
+            fail(results, str(path), f"worker action contract missing: {', '.join(missing)}")
+        else:
+            ok(results, str(path), "worker action/blocking contract is complete")
+
+    doctor_path = plugin_dir / "skills" / "setup" / "scripts" / "doctor.sh"
+    common_path = plugin_dir / "skills" / "setup" / "scripts" / "common.sh"
+    setup_skill_path = plugin_dir / "skills" / "setup" / "SKILL.md"
+    smoke_text = (_load_text(doctor_path) + _load_text(common_path) + _load_text(setup_skill_path)).lower()
+    smoke_terms = (
+        "--runtime-smoke explorer|worker",
+        "worker_success",
+        "model_catalog_failure",
+        "approval_blocked",
+        "spawn_failure",
+        "execution_failure",
+        "first_tool_timeout",
+        "first_edit_timeout",
+        "handoff_timeout",
+        "invalid_handoff",
+        "aspera-worker-smoke.txt",
+        "workspace-write",
+        "--ignore-user-config",
+    )
+    missing = [term for term in smoke_terms if term not in smoke_text]
+    if missing:
+        fail(results, str(common_path), f"worker smoke contract missing: {', '.join(missing)}")
+    else:
+        ok(results, str(common_path), "isolated worker smoke and failure classes are complete")
+
+    eval_path = repo_root / "tests" / "evals" / "manual-eval-spec.json"
+    eval_data = _read_json(eval_path)
+    metrics = eval_data.get("recorded_metrics", {}).get("aspera_orchestrator", {})
+    telemetry = {
+        "time_to_first_tool",
+        "time_to_first_edit",
+        "handoff_received",
+        "steering_count",
+        "interrupted",
+        "interruption_reason",
+        "worktree_changes_before_interrupt",
+        "parent_takeover",
+    }
+    missing_metrics = sorted(telemetry.difference(metrics))
+    if missing_metrics:
+        fail(results, str(eval_path), f"worker telemetry missing: {', '.join(missing_metrics)}")
+    else:
+        ok(results, str(eval_path), "worker lifecycle telemetry is complete")
+
+
 def _check_skill_openai_yaml(path: Path, results: List[ValidationResult]) -> None:
     data = _parse_yaml_nested(_load_text(path))
     interface = data.get("interface")
@@ -578,6 +665,7 @@ def validate_package(plugin_dir: Path, repo_root: Path, results: List[Validation
 
     _check_policy_source(repo_root, results)
     _check_orchestrate_activation_rules(repo_root, plugin_dir, results)
+    _check_worker_runtime_contract(repo_root, plugin_dir, results)
     _check_manual_eval_activation_records(repo_root, results)
 
     for shell_path in plugin_dir.glob("**/*.sh"):

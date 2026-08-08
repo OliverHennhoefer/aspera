@@ -8,11 +8,11 @@ source "${SCRIPT_DIR}/common.sh"
 
 TARGET="$(pwd)"
 PROFILE=""
-RUNTIME_SMOKE=0
+RUNTIME_SMOKE=""
 
 usage() {
   cat <<'USAGE'
-Usage: doctor.sh [--profile spark|luna] [--runtime-smoke] [TARGET]
+Usage: doctor.sh [--profile spark|luna] [--runtime-smoke explorer|worker] [TARGET]
 USAGE
 }
 
@@ -23,8 +23,15 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --runtime-smoke)
-      RUNTIME_SMOKE=1
-      shift
+      if [[ $# -lt 2 ]]; then
+        aspera_err "--runtime-smoke requires explorer or worker"
+      fi
+      RUNTIME_SMOKE="$2"
+      case "$RUNTIME_SMOKE" in
+        explorer|worker) ;;
+        *) aspera_err "invalid runtime smoke '$RUNTIME_SMOKE' (expected explorer or worker)" ;;
+      esac
+      shift 2
       ;;
     --help|-h)
       usage
@@ -115,26 +122,29 @@ fi
 
 echo "doctor: state and managed files are valid"
 
-if [ "$RUNTIME_SMOKE" -eq 1 ]; then
-  asp_preflight_models "$PROFILE"
+if [ -n "$RUNTIME_SMOKE" ]; then
+  if ! (asp_preflight_models "$PROFILE"); then
+    echo "classification=MODEL_CATALOG_FAILURE"
+    exit 1
+  fi
   out_file="$(mktemp)"
-  if asp_run_smoke "$ASPERA_TARGET" "$out_file"; then
-    PROMPT="You are the scoped smoke checker. Spawn aspera_explorer in an isolated context only. Respond with exactly: ASPERA_SMOKE_OK"
-    aspera_info "runtime-smoke usage: ${ASPERA_CODEX_BIN:-codex} exec --cd $ASPERA_TARGET --skip-git-repo-check --ephemeral --sandbox read-only \"$PROMPT\""
+  status_file="$(mktemp)"
+  if asp_run_smoke "$RUNTIME_SMOKE" "$ASPERA_TARGET" "$out_file" "$status_file"; then
+    aspera_info "runtime-smoke kind: $RUNTIME_SMOKE"
+    cat "$status_file"
+    asp_report_smoke_usage "$out_file"
     echo "runtime-smoke output:"
     cat "$out_file"
-    if ! grep -Fq "ASPERA_SMOKE_OK" "$out_file"; then
-      echo "[FAIL] ASPERA_SMOKE_OK not found"
-      rm -f "$out_file"
-      exit 1
-    fi
-    rm -f "$out_file"
+    rm -f "$out_file" "$status_file"
   else
     rc=$?
-    aspera_info "runtime-smoke command failed with $rc"
+    aspera_info "runtime-smoke kind: $RUNTIME_SMOKE"
+    cat "$status_file" || true
+    asp_report_smoke_usage "$out_file"
+    aspera_info "runtime-smoke failed with $rc"
     echo "runtime-smoke output:"
     cat "$out_file" || true
-    rm -f "$out_file"
+    rm -f "$out_file" "$status_file"
     exit "$rc"
   fi
 fi

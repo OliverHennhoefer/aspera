@@ -137,6 +137,14 @@
       "delegation_count": null,
       "retries": null,
       "parent_interventions": null,
+      "time_to_first_tool": null,
+      "time_to_first_edit": null,
+      "handoff_received": null,
+      "steering_count": null,
+      "interrupted": null,
+      "interruption_reason": null,
+      "worktree_changes_before_interrupt": null,
+      "parent_takeover": null,
       "result": "pending"
     },
     "aspera_orchestrator": {
@@ -150,6 +158,14 @@
       "delegation_count": null,
       "retries": null,
       "parent_interventions": null,
+      "time_to_first_tool": null,
+      "time_to_first_edit": null,
+      "handoff_received": null,
+      "steering_count": null,
+      "interrupted": null,
+      "interruption_reason": null,
+      "worktree_changes_before_interrupt": null,
+      "parent_takeover": null,
       "result": "pending"
     }
   },

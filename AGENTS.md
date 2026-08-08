@@ -24,6 +24,15 @@ Do not derive policy from `.codex/config.toml`.
 - Direct mode remains parent-only and performs no delegation.
 - Do not apply Aspera orchestration to reviews, explanations, status requests, setup, doctor, installation, or uninstall work; use the applicable workflow or skill instead.
 
+## Worker lifecycle protocol
+
+- A clean worktree or quota change alone does not prove worker success or failure.
+- On first signs of worker stall or uncertainty, inspect the active thread, effective sandbox/approval state, working directory, and latest tool event before intervening.
+- Permit at most one corrective steer during a single task unless state has changed materially.
+- Use the packet deadline when present; otherwise use 120 seconds as a conservative fallback before classifying non-progress. This is not an expected latency or root-cause diagnosis.
+- Interrupt only when there is confirmed failure, explicit approval block, task timeout, or sustained non-progress.
+- Parent intervention in interrupted worker cases is treated as a failed delegation and parent intervention.
+
 ## Modes
 
 - Direct: parent-only, no delegated roles.

@@ -629,38 +629,250 @@ asp_backup() {
 }
 
 asp_run_smoke() {
-  local target="$1"
-  local out_file="$2"
+  local smoke_kind="$1"
+  local target="$2"
+  local out_file="$3"
+  local status_file="$4"
   local codex_bin="${ASPERA_CODEX_BIN:-codex}"
   command -v "$codex_bin" >/dev/null 2>&1 || aspera_err "$codex_bin required for smoke"
 
-  python3 - "$codex_bin" "$target" "$out_file" <<'PY2'
+  python3 - "$codex_bin" "$smoke_kind" "$target" "$out_file" "$status_file" <<'PY2'
+import json
+import os
+import pathlib
+import shutil
+import signal
 import subprocess
 import sys
+import tempfile
+import time
 
-bin_path, target, out_file = sys.argv[1:4]
-prompt = (
-  "You are the scoped smoke checker. "
-  "Spawn aspera_explorer in an isolated context only. "
-  "Respond with exactly: ASPERA_SMOKE_OK"
-)
+bin_path, smoke_kind, target, out_file, status_file = sys.argv[1:6]
+timeout = float(os.environ.get("ASPERA_SMOKE_TIMEOUT_SECONDS", "120"))
+if timeout <= 0:
+    raise SystemExit("ASPERA_SMOKE_TIMEOUT_SECONDS must be greater than zero")
+
+
+def write_status(classification, duration, first_tool=None, first_edit=None):
+    first_tool_value = "unavailable" if first_tool is None else f"{first_tool:.3f}"
+    first_edit_value = "unavailable" if first_edit is None else f"{first_edit:.3f}"
+    pathlib.Path(status_file).write_text(
+        f"classification={classification}\n"
+        f"duration_seconds={duration:.3f}\n"
+        f"time_to_first_tool_seconds={first_tool_value}\n"
+        f"time_to_first_edit_seconds={first_edit_value}\n",
+        encoding="utf-8",
+    )
+
+
+def output_has_tool_event():
+    def contains_tool(value):
+        if isinstance(value, dict):
+            event_type = str(value.get("type", "")).lower()
+            if (
+                "tool_call" in event_type
+                or event_type in {"command_execution", "file_change", "mcp_tool_call", "web_search"}
+            ):
+                return True
+            return any(contains_tool(nested) for nested in value.values())
+        if isinstance(value, list):
+            return any(contains_tool(nested) for nested in value)
+        return False
+
+    try:
+        lines = pathlib.Path(out_file).read_text(encoding="utf-8", errors="replace").splitlines()
+    except FileNotFoundError:
+        return False
+    for line in lines:
+        try:
+            if contains_tool(json.loads(line)):
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+if smoke_kind == "explorer":
+    run_root = pathlib.Path(target)
+    sandbox = "read-only"
+    sentinel = None
+    prompt = (
+        "Spawn aspera_explorer in an isolated context to inspect only the current directory. "
+        "Do not edit files. After its handoff, respond with exactly ASPERA_EXPLORER_SMOKE_OK."
+    )
+    temp_context = None
+elif smoke_kind == "worker":
+    temp_context = tempfile.TemporaryDirectory(prefix="aspera-worker-smoke-")
+    run_root = pathlib.Path(temp_context.name)
+    agents_target = run_root / ".codex" / "agents"
+    agents_target.mkdir(parents=True)
+    agents_source = pathlib.Path(target) / ".codex" / "agents"
+    for source in agents_source.glob("aspera-*.toml"):
+        shutil.copy2(source, agents_target / source.name)
+    sentinel = run_root / "aspera-worker-smoke.txt"
+    sandbox = "workspace-write"
+    prompt = """Spawn aspera_worker with exactly this bounded packet. The parent must not edit files.
+
+TASK_ID: ASPERA_RUNTIME_WORKER
+OBJECTIVE: Create aspera-worker-smoke.txt containing exactly ASPERA_WORKER_SMOKE_OK followed by one newline.
+OWNED_PATHS: aspera-worker-smoke.txt
+READ_ONLY_CONTEXT: The isolated smoke workspace contains only project-scoped Aspera agent profiles.
+INTERFACE_CONTRACTS: The sentinel file content is the complete public result.
+CONSTRAINTS: Do not edit any other path. Do not delegate. Begin tool work promptly.
+NON_GOALS: Do not inspect or modify the user's repository.
+IMPLEMENTATION_STEPS: 1. Create the sentinel. 2. Read it back. 3. Return the handoff.
+VERIFICATION: Verify the exact sentinel content including its trailing newline.
+STOP_CONDITIONS: Return blocked immediately if the owned file cannot be written.
+HANDOFF_FORMAT: STATUS: done | blocked | failed; TASK_ID:; CHANGED FILES:; VERIFICATION COMMANDS AND RESULTS:; ASSUMPTIONS:; REMAINING RISKS:; BLOCKER OR REQUIRED DECISION:
+
+After receiving the worker handoff, verify it has STATUS: done and TASK_ID: ASPERA_RUNTIME_WORKER. Then respond with these exact lines:
+ASPERA_WORKER_SMOKE_OK
+STATUS: done
+TASK_ID: ASPERA_RUNTIME_WORKER
+"""
+else:
+    raise SystemExit(f"invalid smoke kind: {smoke_kind}")
+
 cmd = [
-  bin_path,
-  'exec',
-  '--cd',
-  target,
-  '--skip-git-repo-check',
-  '--ephemeral',
-  '--sandbox',
-  'read-only',
-  prompt,
+    bin_path,
+    "exec",
+    "--cd",
+    str(run_root),
+    "--skip-git-repo-check",
+    "--ephemeral",
+    "--ignore-user-config",
+    "--sandbox",
+    sandbox,
+    "--json",
+    prompt,
 ]
-with open(out_file, 'w') as out:
-  try:
-    proc = subprocess.run(cmd, stdout=out, stderr=subprocess.STDOUT, timeout=120)
-  except subprocess.TimeoutExpired:
-    out.write('ASPERA_SMOKE_TIMEOUT')
-    raise SystemExit(124)
-raise SystemExit(proc.returncode)
+
+started = time.monotonic()
+first_tool = None
+first_edit = None
+timed_out = False
+with open(out_file, "w", encoding="utf-8") as out:
+    proc = subprocess.Popen(cmd, stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
+    while proc.poll() is None:
+        elapsed = time.monotonic() - started
+        if first_tool is None and output_has_tool_event():
+            first_tool = elapsed
+        if sentinel is not None and first_edit is None and sentinel.exists():
+            first_edit = elapsed
+        if elapsed >= timeout:
+            timed_out = True
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            proc.wait()
+            break
+        time.sleep(0.05)
+
+duration = time.monotonic() - started
+if first_tool is None and output_has_tool_event():
+    first_tool = duration
+if sentinel is not None and first_edit is None and sentinel.exists():
+    first_edit = duration
+output = pathlib.Path(out_file).read_text(encoding="utf-8", errors="replace")
+
+if timed_out:
+    if first_tool is None:
+        classification = "FIRST_TOOL_TIMEOUT"
+    elif first_edit is None:
+        classification = "FIRST_EDIT_TIMEOUT"
+    else:
+        classification = "HANDOFF_TIMEOUT"
+    write_status(classification, duration, first_tool, first_edit)
+    if temp_context is not None:
+        temp_context.cleanup()
+    raise SystemExit(1)
+
+if proc.returncode != 0:
+    lowered = output.lower()
+    approval_words = ("approval required", "approval denied", "approval blocked", "cannot request approval")
+    if any(word in lowered for word in approval_words):
+        classification = "APPROVAL_BLOCKED"
+    elif "spawn" in lowered:
+        classification = "SPAWN_FAILURE"
+    else:
+        classification = "EXECUTION_FAILURE"
+    write_status(classification, duration, first_tool, first_edit)
+    if temp_context is not None:
+        temp_context.cleanup()
+    raise SystemExit(1)
+
+if smoke_kind == "explorer":
+    classification = "EXPLORER_SUCCESS" if "ASPERA_EXPLORER_SMOKE_OK" in output else "INVALID_HANDOFF"
+else:
+    if sentinel is None or not sentinel.exists():
+        classification = "EDIT_MISSING"
+    elif sentinel.read_bytes() != b"ASPERA_WORKER_SMOKE_OK\n":
+        classification = "INVALID_EDIT"
+    elif not all(marker in output for marker in (
+        "ASPERA_WORKER_SMOKE_OK",
+        "STATUS: done",
+        "TASK_ID: ASPERA_RUNTIME_WORKER",
+    )):
+        classification = "INVALID_HANDOFF"
+    else:
+        classification = "WORKER_SUCCESS"
+
+write_status(classification, duration, first_tool, first_edit)
+if temp_context is not None:
+    temp_context.cleanup()
+raise SystemExit(0 if classification in {"EXPLORER_SUCCESS", "WORKER_SUCCESS"} else 1)
+PY2
+}
+
+asp_report_smoke_usage() {
+  local out_file="$1"
+  python3 - "$out_file" <<'PY2'
+import json
+import pathlib
+import sys
+
+token_keys = {
+    "input_tokens",
+    "cached_input_tokens",
+    "output_tokens",
+    "reasoning_tokens",
+}
+credit_keys = ("credits_spent", "credit_usage", "credits")
+candidates = []
+credit_candidates = []
+
+
+def walk(value):
+    if isinstance(value, dict):
+        if token_keys.intersection(value):
+            candidates.append(value)
+        for key in credit_keys:
+            if key in value:
+                credit_candidates.append(value[key])
+        for nested in value.values():
+            walk(nested)
+    elif isinstance(value, list):
+        for nested in value:
+            walk(nested)
+
+
+for line in pathlib.Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace").splitlines():
+    try:
+        walk(json.loads(line))
+    except json.JSONDecodeError:
+        continue
+
+usage = candidates[-1] if candidates else {}
+values = {key: usage.get(key, "unavailable") for key in token_keys}
+credits = credit_candidates[-1] if credit_candidates else "unavailable"
+print(
+    "runtime-smoke usage: "
+    f"input_tokens={values['input_tokens']} "
+    f"cached_input_tokens={values['cached_input_tokens']} "
+    f"output_tokens={values['output_tokens']} "
+    f"reasoning_tokens={values['reasoning_tokens']} "
+    f"credits={credits}"
+)
 PY2
 }
