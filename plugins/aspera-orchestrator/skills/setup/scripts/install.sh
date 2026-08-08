@@ -2,6 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# The runtime-computed absolute path cannot be resolved by static analysis.
+# shellcheck disable=SC1091
 source "${SCRIPT_DIR}/common.sh"
 
 TARGET="$(pwd)"

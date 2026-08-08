@@ -456,12 +456,10 @@ test_install_contracts() {
   assert_exit "${pre_hash}" "${post_hash}" "state file stable across repeated install"
   assert_exit "${pre_roles}" "${post_roles}" "managed artifacts stable across repeated install"
 
-  local switched
   rc="$(capture "${TMP_ROOT}/install_switch.out" bash "${INSTALL_SCRIPT}" --profile luna "${spark_target}")"
   assert_exit "${rc}" "0" "clean profile switch to luna succeeds"
   assert_exit "$(read_state_value "${spark_state}" profile)" "luna" "profile switch is recorded"
 
-  local config_file="${spark_target}/.codex/config.toml"
   local config_target="${WORK_ROOT}/config-identity"
   rm -rf "${config_target}"
   mkdir -p "${config_target}/.codex"

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# This sourced library intentionally exposes globals to different entrypoints.
+# shellcheck disable=SC2034
 set -euo pipefail
 
 ASPERA_POLICY_MARKER_START='<!-- aspera-orchestrator:policy:start -->'
@@ -9,9 +11,6 @@ ASPERA_ASSETS_DIR="${ASPERA_SCRIPT_DIR}/../assets/profiles"
 ASPERA_STATE_FILE_REL='.codex/aspera-orchestrator/state.json'
 ASPERA_STATE_BACKUP_DIR_REL='.codex/aspera-orchestrator/backups'
 ASPERA_AGENTS_FILE_REL='AGENTS.md'
-ASPERA_PLUGIN_ID='aspera-orchestrator'
-ASPERA_SCHEMA_VERSION=1
-ASPERA_PLUGIN_VERSION='0.1.0'
 ASPERA_MANAGED_FILES=(
   '.codex/agents/aspera-explorer.toml'
   '.codex/agents/aspera-worker.toml'

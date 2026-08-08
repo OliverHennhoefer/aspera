@@ -91,7 +91,7 @@ def _check_shellcheck(path: Path, results: List[ValidationResult]) -> None:
     if binary is None:
         ok(results, str(path), "shellcheck not installed (skipped)")
         return
-    code = subprocess.call([binary, "-s", "bash", "-e", str(path)])
+    code = subprocess.call([binary, "-s", "bash", str(path)])
     if code == 0:
         ok(results, str(path), "shellcheck passed")
     else:
