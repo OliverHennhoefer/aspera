@@ -14,11 +14,11 @@ FORCE=0
 
 usage() {
   cat <<'USAGE'
-Usage: install.sh [--workspace PATH] [--profile spark|luna] [--no-policy] [--dry-run] [--force] [PATH]
+Usage: install.sh [--workspace PATH] [--profile adaptive|luna] [--install-policy|--no-policy] [--dry-run] [--force] [PATH]
 
 Installs or updates an Aspera project in one idempotent operation. Fresh installs
-default to the Spark profile with managed project policy. Existing installs keep
-their profile and policy unless an explicit option changes them.
+default to the adaptive Luna-first profile with managed project policy. The legacy
+profile name spark is accepted as a one-release alias for adaptive.
 USAGE
 }
 
@@ -31,15 +31,17 @@ while [ "$#" -gt 0 ]; do
       shift 2
       ;;
     --profile)
-      [ "$#" -ge 2 ] || aspera_err '--profile requires spark or luna'
+      [ "$#" -ge 2 ] || aspera_err '--profile requires adaptive or luna'
       PROFILE="$2"
       shift 2
       ;;
     --install-policy)
+      [ "$POLICY_MODE" != 'remove' ] || aspera_err '--install-policy and --no-policy are mutually exclusive'
       POLICY_MODE='install'
       shift
       ;;
     --no-policy)
+      [ "$POLICY_MODE" != 'install' ] || aspera_err '--install-policy and --no-policy are mutually exclusive'
       POLICY_MODE='remove'
       shift
       ;;
@@ -88,10 +90,12 @@ fi
 if [ -z "$PROFILE" ]; then
   if [ "$HAS_STATE" -eq 1 ]; then
     PROFILE="$STATE_PROFILE"
+    [ "$PROFILE" != 'spark' ] || PROFILE='adaptive'
   else
-    PROFILE='spark'
+    PROFILE='adaptive'
   fi
 fi
+PROFILE="$(aspera_normalize_profile "$PROFILE")"
 aspera_validate_profile "$PROFILE"
 asp_set_profile_contract "$PROFILE"
 
@@ -107,37 +111,53 @@ esac
 
 POLICY_SCAN="$(asp_policy_scan "$ASPERA_POLICY_FILE")"
 [ "$POLICY_SCAN" != 'invalid' ] || aspera_err "policy markers are invalid in $ASPERA_POLICY_FILE"
-if [ "$DESIRED_POLICY" -eq 1 ]; then
-  if [ ! -f "$ASPERA_POLICY_SRC" ] || [ -L "$ASPERA_POLICY_SRC" ]; then
-    aspera_err "policy source is missing or unsafe: $ASPERA_POLICY_SRC"
-  fi
-fi
+asp_validate_policy_assets
 
 EXPLORER_SRC="$(asp_profile_asset_path "$PROFILE" explorer)"
-WORKER_SRC="$(asp_profile_asset_path "$PROFILE" worker)"
-VERIFIER_SRC="$(asp_profile_asset_path "$PROFILE" verifier)"
+LUNA_WORKER_SRC="$(asp_profile_asset_path "$PROFILE" luna-worker)"
+SPARK_WORKER_SRC="$(asp_profile_asset_path "$PROFILE" spark-worker)"
 RESEARCHER_SRC="$(asp_profile_asset_path "$PROFILE" researcher)"
 REVIEWER_SRC="$(asp_profile_asset_path "$PROFILE" reviewer)"
-EXPLORER_HASH="$(asp_validate_asset_file "$PROFILE" explorer "$ASPERA_MODEL_PRIMARY")"
-WORKER_HASH="$(asp_validate_asset_file "$PROFILE" worker "$ASPERA_MODEL_PRIMARY")"
-VERIFIER_HASH="$(asp_validate_asset_file "$PROFILE" verifier "$ASPERA_MODEL_PRIMARY")"
+EXPLORER_HASH="$(asp_validate_asset_file "$PROFILE" explorer "$ASPERA_MODEL_LUNA")"
+LUNA_WORKER_HASH="$(asp_validate_asset_file "$PROFILE" luna-worker "$ASPERA_MODEL_LUNA")"
+SPARK_WORKER_HASH=''
+if [ "$PROFILE" = 'adaptive' ]; then
+  SPARK_WORKER_HASH="$(asp_validate_asset_file "$PROFILE" spark-worker "$ASPERA_MODEL_SPARK")"
+fi
 RESEARCHER_HASH="$(asp_validate_asset_file "$PROFILE" researcher "$ASPERA_MODEL_RESEARCHER")"
 REVIEWER_HASH="$(asp_validate_asset_file "$PROFILE" reviewer "$ASPERA_MODEL_REVIEWER")"
 GUARD_HASH="$(asp_validate_guard_asset)"
+PROTOCOL_HASH="$(aspera_hash_file "$ASPERA_PROTOCOL_SRC")"
+
+DESIRED_PAIRS=(
+  ".codex/agents/aspera-explorer.toml:$EXPLORER_HASH"
+  ".codex/agents/aspera-luna-worker.toml:$LUNA_WORKER_HASH"
+  ".codex/agents/aspera-researcher.toml:$RESEARCHER_HASH"
+  ".codex/agents/aspera-reviewer.toml:$REVIEWER_HASH"
+  ".codex/aspera-orchestrator/worker_guard.py:$GUARD_HASH"
+  ".codex/aspera-orchestrator/protocol.md:$PROTOCOL_HASH"
+)
+if [ "$PROFILE" = 'adaptive' ]; then
+  DESIRED_PAIRS+=(".codex/agents/aspera-spark-worker.toml:$SPARK_WORKER_HASH")
+fi
 
 DRIFT=0
-if [ "$HAS_STATE" -eq 1 ]; then
-  while IFS= read -r rel; do
+for rel in "${ASPERA_ALL_MANAGED_FILES[@]}"; do
+  recorded=''
+  if [ "$HAS_STATE" -eq 1 ]; then
     recorded="$(asp_state_get_hash "$asp_state_file" "$rel")"
-    current_path="$ASPERA_TARGET/$rel"
+  fi
+  current_path="$ASPERA_TARGET/$rel"
+  if [ -n "$recorded" ]; then
     if [ ! -f "$current_path" ] || [ -L "$current_path" ] || [ "$(aspera_hash_file "$current_path")" != "$recorded" ]; then
       DRIFT=1
     fi
-  done < <(asp_state_managed_files "$asp_state_file")
-
-  if [ "$STATE_SCHEMA" = '1' ] && [ -e "$ASPERA_TARGET/.codex/aspera-orchestrator/worker_guard.py" ]; then
+  elif [ -e "$current_path" ] || [ -L "$current_path" ]; then
     DRIFT=1
   fi
+done
+
+if [ "$HAS_STATE" -eq 1 ]; then
   if [ "$STATE_POLICY" -eq 1 ]; then
     if [ "$POLICY_SCAN" != 'ok' ] || [ "$(asp_policy_hash "$ASPERA_POLICY_FILE")" != "$(asp_state_get "$asp_state_file" policy_hash)" ]; then
       DRIFT=1
@@ -146,11 +166,6 @@ if [ "$HAS_STATE" -eq 1 ]; then
     DRIFT=1
   fi
 else
-  for rel in "${ASPERA_MANAGED_FILES[@]}"; do
-    if [ -e "$ASPERA_TARGET/$rel" ] || [ -L "$ASPERA_TARGET/$rel" ]; then
-      DRIFT=1
-    fi
-  done
   [ "$POLICY_SCAN" != 'ok' ] || DRIFT=1
 fi
 
@@ -167,13 +182,7 @@ UPDATE_NEEDED=0
 if [ "$HAS_STATE" -eq 0 ] || [ "$STATE_SCHEMA" != "$ASPERA_STATE_SCHEMA" ] || [ "$STATE_PROFILE" != "$PROFILE" ] || [ "$STATE_POLICY" -ne "$DESIRED_POLICY" ]; then
   UPDATE_NEEDED=1
 fi
-for pair in \
-  ".codex/agents/aspera-explorer.toml:$EXPLORER_HASH" \
-  ".codex/agents/aspera-worker.toml:$WORKER_HASH" \
-  ".codex/agents/aspera-verifier.toml:$VERIFIER_HASH" \
-  ".codex/agents/aspera-researcher.toml:$RESEARCHER_HASH" \
-  ".codex/agents/aspera-reviewer.toml:$REVIEWER_HASH" \
-  ".codex/aspera-orchestrator/worker_guard.py:$GUARD_HASH"; do
+for pair in "${DESIRED_PAIRS[@]}"; do
   rel="${pair%%:*}"
   desired_hash="${pair#*:}"
   if [ "$HAS_STATE" -eq 0 ] || [ "$(asp_state_get_hash "$asp_state_file" "$rel")" != "$desired_hash" ]; then
@@ -212,6 +221,8 @@ STAGE_ROOT="$STAGE_PARENT/.install-stage.$$.$RANDOM"
 umask 077
 mkdir -p "$STAGE_ROOT/files" "$STAGE_ROOT/rollback"
 
+TRANSACTION_FILES=("${ASPERA_ALL_MANAGED_FILES[@]}")
+
 TRANSACTION_ACTIVE=0
 rollback_install() {
   local rel
@@ -236,7 +247,7 @@ cleanup_install() {
 }
 trap cleanup_install EXIT INT TERM
 
-for rel in "${ASPERA_MANAGED_FILES[@]}" "$ASPERA_AGENTS_FILE_REL" "$ASPERA_STATE_FILE_REL"; do
+for rel in "${TRANSACTION_FILES[@]}" "$ASPERA_AGENTS_FILE_REL" "$ASPERA_STATE_FILE_REL"; do
   printf '%s\n' "$rel" >> "$STAGE_ROOT/rollback-paths"
   if [ -e "$ASPERA_TARGET/$rel" ]; then
     if [ ! -f "$ASPERA_TARGET/$rel" ] || [ -L "$ASPERA_TARGET/$rel" ]; then
@@ -256,11 +267,14 @@ stage_copy() {
   cp "$source" "$STAGE_ROOT/files/$rel"
 }
 stage_copy "$EXPLORER_SRC" '.codex/agents/aspera-explorer.toml'
-stage_copy "$WORKER_SRC" '.codex/agents/aspera-worker.toml'
-stage_copy "$VERIFIER_SRC" '.codex/agents/aspera-verifier.toml'
+stage_copy "$LUNA_WORKER_SRC" '.codex/agents/aspera-luna-worker.toml'
+if [ "$PROFILE" = 'adaptive' ]; then
+  stage_copy "$SPARK_WORKER_SRC" '.codex/agents/aspera-spark-worker.toml'
+fi
 stage_copy "$RESEARCHER_SRC" '.codex/agents/aspera-researcher.toml'
 stage_copy "$REVIEWER_SRC" '.codex/agents/aspera-reviewer.toml'
 stage_copy "$ASPERA_GUARD_SRC" '.codex/aspera-orchestrator/worker_guard.py'
+stage_copy "$ASPERA_PROTOCOL_SRC" '.codex/aspera-orchestrator/protocol.md'
 
 if [ "$DESIRED_POLICY" -eq 1 ]; then
   asp_render_policy "$ASPERA_POLICY_FILE" "$ASPERA_POLICY_SRC" "$STAGE_ROOT/files/$ASPERA_AGENTS_FILE_REL"
@@ -271,27 +285,31 @@ else
 fi
 
 mkdir -p "$(dirname "$STAGE_ROOT/files/$ASPERA_STATE_FILE_REL")"
-python3 - "$STAGE_ROOT/files/$ASPERA_STATE_FILE_REL" "$PROFILE" "$EXPLORER_HASH" "$WORKER_HASH" "$VERIFIER_HASH" "$RESEARCHER_HASH" "$REVIEWER_HASH" "$GUARD_HASH" "$DESIRED_POLICY" "$POLICY_STATE_HASH" <<'PY'
+python3 - "$STAGE_ROOT/files/$ASPERA_STATE_FILE_REL" "$PROFILE" "$EXPLORER_HASH" "$LUNA_WORKER_HASH" "$SPARK_WORKER_HASH" "$RESEARCHER_HASH" "$REVIEWER_HASH" "$GUARD_HASH" "$PROTOCOL_HASH" "$DESIRED_POLICY" "$POLICY_STATE_HASH" <<'PY'
 import json
 import pathlib
 import sys
 target = pathlib.Path(sys.argv[1])
+profile = sys.argv[2]
+managed = {
+    '.codex/agents/aspera-explorer.toml': sys.argv[3],
+    '.codex/agents/aspera-luna-worker.toml': sys.argv[4],
+    '.codex/agents/aspera-researcher.toml': sys.argv[6],
+    '.codex/agents/aspera-reviewer.toml': sys.argv[7],
+    '.codex/aspera-orchestrator/worker_guard.py': sys.argv[8],
+    '.codex/aspera-orchestrator/protocol.md': sys.argv[9],
+}
+if profile == 'adaptive':
+    managed['.codex/agents/aspera-spark-worker.toml'] = sys.argv[5]
 payload = {
-    'schema_version': 3,
+    'schema_version': 4,
     'plugin': 'aspera-orchestrator',
-    'plugin_version': '0.3.0',
-    'profile': sys.argv[2],
-    'managed_files': {
-        '.codex/agents/aspera-explorer.toml': sys.argv[3],
-        '.codex/agents/aspera-worker.toml': sys.argv[4],
-        '.codex/agents/aspera-verifier.toml': sys.argv[5],
-        '.codex/agents/aspera-researcher.toml': sys.argv[6],
-        '.codex/agents/aspera-reviewer.toml': sys.argv[7],
-        '.codex/aspera-orchestrator/worker_guard.py': sys.argv[8],
-    },
+    'plugin_version': '0.4.0',
+    'profile': profile,
+    'managed_files': managed,
     'guard_hash': sys.argv[8],
-    'policy_installed': bool(int(sys.argv[9])),
-    'policy_hash': sys.argv[10] if bool(int(sys.argv[9])) else '',
+    'policy_installed': bool(int(sys.argv[10])),
+    'policy_hash': sys.argv[11] if bool(int(sys.argv[10])) else '',
 }
 target.write_text(json.dumps(payload, indent=2) + '\n', encoding='utf-8')
 PY
@@ -299,7 +317,7 @@ asp_state_validate "$STAGE_ROOT/files/$ASPERA_STATE_FILE_REL" || aspera_err 'sta
 
 if [ "$HAS_STATE" -eq 1 ] || [ "$DRIFT" -eq 1 ] || [ -e "$ASPERA_POLICY_FILE" ]; then
   BACKUP_ROOT="$(aspera_prepare_backup_root "$ASPERA_TARGET")"
-  for rel in "${ASPERA_MANAGED_FILES[@]}" "$ASPERA_AGENTS_FILE_REL" "$ASPERA_STATE_FILE_REL"; do
+  for rel in "${TRANSACTION_FILES[@]}" "$ASPERA_AGENTS_FILE_REL" "$ASPERA_STATE_FILE_REL"; do
     asp_backup "$ASPERA_TARGET" "$BACKUP_ROOT" "$rel"
   done
   aspera_info "backup created: $BACKUP_ROOT"
@@ -311,24 +329,34 @@ cmp -s "$STAGE_ROOT/snapshot-before" "$STAGE_ROOT/snapshot-after" || aspera_err 
 
 TRANSACTION_ACTIVE=1
 COMMIT_COUNT=0
-commit_file() {
-  local rel="$1"
-  mkdir -p "$(dirname "$ASPERA_TARGET/$rel")"
-  mv -f "$STAGE_ROOT/files/$rel" "$ASPERA_TARGET/$rel"
+record_commit() {
   COMMIT_COUNT=$((COMMIT_COUNT + 1))
   if [ -n "${ASPERA_INSTALL_FAIL_AFTER:-}" ] && [ "$COMMIT_COUNT" -eq "$ASPERA_INSTALL_FAIL_AFTER" ]; then
     aspera_err "injected install failure after commit $COMMIT_COUNT"
   fi
 }
+commit_file() {
+  local rel="$1"
+  mkdir -p "$(dirname "$ASPERA_TARGET/$rel")"
+  mv -f "$STAGE_ROOT/files/$rel" "$ASPERA_TARGET/$rel"
+  record_commit
+}
+remove_file() {
+  rm -f "$ASPERA_TARGET/$1"
+  record_commit
+}
 
-for rel in "${ASPERA_MANAGED_FILES[@]}"; do
-  commit_file "$rel"
+for rel in "${TRANSACTION_FILES[@]}"; do
+  if [ -f "$STAGE_ROOT/files/$rel" ]; then
+    commit_file "$rel"
+  else
+    remove_file "$rel"
+  fi
 done
 if [ -s "$STAGE_ROOT/files/$ASPERA_AGENTS_FILE_REL" ]; then
   commit_file "$ASPERA_AGENTS_FILE_REL"
 else
-  rm -f "$ASPERA_TARGET/$ASPERA_AGENTS_FILE_REL"
-  COMMIT_COUNT=$((COMMIT_COUNT + 1))
+  remove_file "$ASPERA_AGENTS_FILE_REL"
 fi
 commit_file "$ASPERA_STATE_FILE_REL"
 

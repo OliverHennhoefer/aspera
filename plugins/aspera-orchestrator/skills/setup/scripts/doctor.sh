@@ -11,7 +11,7 @@ PROFILE=''
 
 usage() {
   cat <<'USAGE'
-Usage: doctor.sh [--workspace PATH] [--profile spark|luna] [PATH]
+Usage: doctor.sh [--workspace PATH] [--profile adaptive|luna] [PATH]
 
 Runs read-only local diagnostics. It never starts Codex, spawns an agent, writes
 state, or changes installation readiness.
@@ -27,7 +27,7 @@ while [ "$#" -gt 0 ]; do
       shift 2
       ;;
     --profile)
-      [ "$#" -ge 2 ] || aspera_err '--profile requires spark or luna'
+      [ "$#" -ge 2 ] || aspera_err '--profile requires adaptive or luna'
       PROFILE="$2"
       shift 2
       ;;
@@ -53,6 +53,7 @@ asp_state_validate_supported "$state_file" || aspera_err "unsupported or corrupt
 schema="$(asp_state_schema "$state_file")"
 state_profile="$(asp_state_get "$state_file" profile)"
 if [ -n "$PROFILE" ]; then
+  PROFILE="$(aspera_normalize_profile "$PROFILE")"
   aspera_validate_profile "$PROFILE"
   [ "$PROFILE" = "$state_profile" ] || aspera_err "installed profile is '$state_profile', not '$PROFILE'"
 fi
@@ -63,6 +64,9 @@ fi
 
 asp_verify_installation "$ASPERA_TARGET" || aspera_err 'managed-file or policy verification failed'
 python3 "$ASPERA_TARGET/.codex/aspera-orchestrator/worker_guard.py" --help >/dev/null 2>&1 || aspera_err 'worker guard is not executable by Python'
-grep -Fq 'command = "python3 .codex/aspera-orchestrator/worker_guard.py"' "$ASPERA_TARGET/.codex/agents/aspera-worker.toml" || aspera_err 'worker profile does not reference the managed guard'
+grep -Fq 'command = "python3 .codex/aspera-orchestrator/worker_guard.py"' "$ASPERA_TARGET/.codex/agents/aspera-luna-worker.toml" || aspera_err 'Luna worker does not reference the managed guard'
+if [ "$state_profile" = 'adaptive' ]; then
+  grep -Fq 'command = "python3 .codex/aspera-orchestrator/worker_guard.py"' "$ASPERA_TARGET/.codex/agents/aspera-spark-worker.toml" || aspera_err 'Spark worker does not reference the managed guard'
+fi
 
 aspera_info "Aspera $ASPERA_PLUGIN_VERSION diagnostic passed for $ASPERA_TARGET ($state_profile)."

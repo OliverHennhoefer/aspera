@@ -1,108 +1,99 @@
 # Aspera Orchestrator
 
-Aspera is a Codex plugin for bounded planner-worker-verifier execution. The parent remains responsible for architecture, verification, and final acceptance.
+Aspera reduces premium parent-model quota without trading away correctness. Sol settles architecture and acceptance, Luna Max performs most bounded implementation, and Spark is available only for naturally mechanical work that already fits the same compact capsule.
 
 ## Requirements
 
-- A current Codex CLI or Codex IDE installation with plugins, custom agents, subagents, and hooks.
-- Bash 3.2 or newer and Python 3.11 or newer.
-- Access to the models selected by the chosen profile.
-
-Aspera does not query the authenticated model catalog during installation. Codex reports model or routing availability when a real task uses a configured role.
+- A current Codex CLI or IDE with plugins, custom agents, subagents, and hooks.
+- Bash 3.2+, Python 3.11+, and access to the models selected by the installed profile.
 
 ## Install or update
-
-Clone or update this repository, then run one command from the Aspera checkout:
 
 ```bash
 ./aspera install --workspace /absolute/path/to/project
 ```
 
-The command:
+Fresh installs use the `adaptive` profile:
 
-- adds or verifies the local Aspera marketplace and refreshes the plugin from this checkout;
-- installs the project role files, worker guard, managed `AGENTS.md` policy, and state receipt;
-- migrates valid Aspera 0.1 and 0.2 state;
-- refuses unmanaged conflicts, drift, and symlinked managed paths;
-- stages the complete target state, rechecks destinations, commits it, and verifies exact hashes;
-- preserves the installed profile and policy on updates.
+| Responsibility | Model |
+|---|---|
+| Architecture, routing, acceptance | Session parent (normally Sol-high) |
+| Primary implementation and repository exploration | Luna Max |
+| Conditional mechanical implementation | Spark `xhigh` |
+| High-risk review | Terra `high` |
 
-Fresh installs use the Spark profile and managed policy. Choose Luna explicitly:
+Use Luna without the conditional Spark role:
 
 ```bash
 ./aspera install --workspace /absolute/path/to/project --profile luna
 ```
 
-Use `--no-policy` only when every task will attach `$aspera-orchestrator:orchestrate` explicitly. Use `--force` only after inspecting reported managed-file drift; Aspera creates a backup before replacing it.
+The legacy `--profile spark` name is accepted for one release as an alias for `adaptive`. Existing valid 0.1–0.3 installations migrate transactionally. Start a new Codex session after install or update.
 
-After success, start a new Codex session so role and policy discovery use the installed files. There is no setup conversation, doctor command, runtime smoke, or other activation step.
+The installer manages role files, packet-v3 guard, lazy protocol, compact project policy, and state receipt. It refuses unmanaged conflicts, drift, and unsafe symlinks; `--force` backs up approved drift before complete reconciliation. It also refreshes the checkout plugin through supported Codex commands and verifies its version, source, and enabled state.
 
-Setup creates:
+Updates preserve the installed profile and policy when their flags are omitted. Use `--no-policy` to remove automatic repository activation and `--install-policy` to restore it. These options are mutually exclusive.
+
+There is no setup interview, automatic doctor, model probe, nested Codex process, runtime smoke, or other activation step.
+
+## Runtime routing
+
+There are no public orchestration modes. With policy installed, Sol performs targeted orientation and chooses:
+
+- continue in Sol when delegation has negative value or quality risk;
+- Luna Max for normal bounded implementation;
+- Spark only when the unchanged Luna-ready capsule passes every strict mechanical-work gate.
+
+Spark is never a reason to add planning, context, or another handoff. It gets one attempt; a concrete failure may be upgraded once to Luna. Workers run focused checks, and Sol inspects the diff and reruns the decisive command.
+
+Detailed routing, packet v3, limits, handoff, and failure rules are installed lazily at:
+
+```text
+.codex/aspera-orchestrator/protocol.md
+```
+
+If an expected role is absent, reinstall and start a new session. Aspera never silently substitutes a model.
+
+## Managed project files
+
+Adaptive installs create:
 
 ```text
 .codex/agents/aspera-explorer.toml
-.codex/agents/aspera-worker.toml
-.codex/agents/aspera-verifier.toml
+.codex/agents/aspera-luna-worker.toml
+.codex/agents/aspera-spark-worker.toml
 .codex/agents/aspera-researcher.toml
 .codex/agents/aspera-reviewer.toml
 .codex/aspera-orchestrator/worker_guard.py
+.codex/aspera-orchestrator/protocol.md
 .codex/aspera-orchestrator/state.json
 ```
 
-These files may be committed for team use or ignored for a personal installation. Do not commit `.codex/aspera-orchestrator/backups/`.
+The Luna profile omits `aspera-spark-worker.toml`. Managed files may be committed or ignored. Do not commit `.codex/aspera-orchestrator/backups/`.
 
-## Use
+## Lifecycle
 
-With managed policy installed, ask for implementation work normally. Aspera uses the roles exposed when the session starts. The first real delegation is the runtime exercise; no synthetic worker is spawned first.
-
-If an expected role is absent, Aspera stops that lane once and asks for a reinstall plus a new session. It does not run setup, retry delegation, or reinterpret a collaboration bootstrap error as an installation failure.
-
-Without managed policy, explicitly select **Aspera Orchestrator: Orchestrate** from `/skills` or `$` for the task.
-
-### Profiles
-
-| Profile | Exploration, implementation, verification | Research | Risk review |
-|---|---|---|---|
-| Spark | Spark `xhigh` | Luna `max` | Terra `high` |
-| Luna | Luna `max` | Luna `max` | Terra `high` |
-
-### Modes
-
-- **Direct:** parent-only, no delegation.
-- **Express:** one bounded worker, plus a verifier when needed.
-- **Standard:** independent exploration, resolved architecture, serialized or disjoint workers, and verification waves.
-
-Workers receive packet v2 with exact owned paths, evidence anchors, settled interfaces, invariants, implementation steps, verification commands, stop conditions, and the canonical handoff. The managed hook is defense-in-depth for packet, ownership, progress, and handoff enforcement.
-
-## Optional lifecycle support
-
-Local diagnosis is read-only and never starts Codex or changes readiness:
+Read-only diagnosis:
 
 ```bash
 ./aspera diagnose --workspace /absolute/path/to/project
 ```
 
-Uninstall removes only files recorded by a supported state receipt and retains a backup:
+Recoverable uninstall with retained backup:
 
 ```bash
 ./aspera uninstall --workspace /absolute/path/to/project
 ```
 
-Both commands support `--dry-run` where applicable. Forced drift handling requires `--force`.
+Both support `--dry-run` where applicable. Forced drift handling requires `--force`.
 
-## Troubleshooting
+## Evaluation and development
 
-- **Marketplace points elsewhere:** use the checkout already configured as marketplace `aspera`, or remove the conflicting marketplace deliberately before retrying.
-- **Role missing in a fresh session:** rerun the one install command and confirm it exits successfully.
-- **Drift detected:** inspect the named managed files before approving `--force`.
-- **Model unavailable during a real task:** choose a profile supported by the current account; Aspera never substitutes a model or reasoning level.
-- **Collaboration bootstrap failure:** treat it as a host/runtime failure. It does not invalidate the installed receipt.
+Spark remains a conditional lane until paired Sol/Luna/Spark evaluations meet the checked-in quota, quality, latency, and retry gates. Evaluation records include complete parent and worker consumption; production receipts contain lifecycle metadata only, never prompts, code, or tool output.
 
-## Development
+Aspera itself is always developed parent-direct:
 
 ```bash
 bash tests/run.sh
 git diff --check
 ```
-
-The optional authenticated runtime evaluation is a release activity and never changes project installation state. The evaluation protocol remains in [`tests/evals/manual-eval-spec.json`](tests/evals/manual-eval-spec.json).

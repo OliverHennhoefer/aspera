@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Aspera worker packet validator and lifecycle hook.
-
-The hook stores only lifecycle metadata in the OS temporary directory. It never
-stores the task prompt or tool output.
-"""
+"""Validate Aspera packet v3 and enforce bounded worker lifecycles."""
 
 from __future__ import annotations
 
@@ -20,26 +16,37 @@ import time
 from typing import Any
 
 
-PACKET_VERSION = "2"
-READY_STATE = "IMPLEMENTATION_READY"
-FIRST_EDIT_DEADLINE_SECONDS = 90.0
-MAX_INSPECTIONS = 4
+PACKET_VERSION = "3"
 STATE_TTL_SECONDS = 24 * 60 * 60
+TARGETS = {
+    "luna": {
+        "model": "gpt-5.6-luna",
+        "max_packet_bytes": 6000,
+        "max_owned_paths": 12,
+        "max_anchors": 8,
+        "max_inspections": 8,
+        "evidence_deadline_seconds": 180.0,
+    },
+    "spark": {
+        "model": "gpt-5.3-codex-spark",
+        "max_packet_bytes": 2500,
+        "max_owned_paths": 4,
+        "max_anchors": 2,
+        "max_inspections": 2,
+        "evidence_deadline_seconds": 90.0,
+    },
+}
 REQUIRED_FIELDS = (
     "PACKET_VERSION",
     "TASK_ID",
+    "WORKER_TARGET",
     "OBJECTIVE",
-    "READY_STATE",
     "OWNED_PATHS",
-    "EVIDENCE_ANCHORS",
-    "INTERFACE_CONTRACTS",
-    "INVARIANTS",
-    "NON_GOALS",
-    "IMPLEMENTATION_STEPS",
-    "ACCEPTANCE_CRITERIA",
+    "CONTEXT_ANCHORS",
+    "CONTRACT",
+    "ACCEPTANCE",
     "VERIFICATION",
     "STOP_CONDITIONS",
-    "HANDOFF_FORMAT",
 )
 HANDOFF_FIELDS = (
     "STATUS:",
@@ -54,10 +61,14 @@ PLACEHOLDER_RE = re.compile(r"<[^>]+>|\b(?:TBD|TO BE DECIDED|UNRESOLVED)\b", re.
 GLOB_RE = re.compile(r"[*?\[\]{}]")
 PATCH_PATH_RE = re.compile(r"^\*\*\* (?:Add|Update|Delete) File: (.+)$", re.MULTILINE)
 VERIFY_COMMAND_RE = re.compile(r"(?m)^\s*-\s*COMMAND:\s*(\S.*)$")
-VERIFY_EXPECTED_RE = re.compile(r"(?m)^\s*EXPECTED:\s*(\S.*)$")
-STEP_RE = re.compile(r"(?m)^\s*(?:\d+[.)]|-)\s+\S")
+VERIFY_EXIT_RE = re.compile(r"(?m)^\s*EXPECTED_EXIT:\s*(-?\d+)\s*$")
 SHELL_MUTATION_RE = re.compile(
     r"(?:^|[^<])>{1,2}|\bsed\b[^\n]*\s-i\b|\b(?:tee|rm|mv|cp|mkdir|touch|chmod|chown|install)\b"
+)
+SPARK_FORBIDDEN_RE = re.compile(
+    r"\b(?:auth(?:entication|orization)?|secret|credential|exposure|concurren(?:cy|t)|race condition|"
+    r"persist(?:ence|ent)|database|schema|migration|public api|destructive|external side effect)\b",
+    re.IGNORECASE,
 )
 
 
@@ -65,7 +76,7 @@ class PacketError(ValueError):
     pass
 
 
-def _json_output(payload: dict[str, Any]) -> None:
+def _json_output(payload: dict[str, Any] | list[Any]) -> None:
     print(json.dumps(payload, separators=(",", ":")))
 
 
@@ -75,30 +86,21 @@ def _hook_stop(classification: str, reason: str) -> dict[str, Any]:
 
 
 def _hook_block(classification: str, reason: str) -> dict[str, Any]:
-    return {
-        "decision": "block",
-        "reason": f"ASPERA_GUARD {classification}: {reason}",
-        "systemMessage": f"ASPERA_GUARD {classification}",
-    }
+    message = f"ASPERA_GUARD {classification}: {reason}"
+    return {"decision": "block", "reason": message, "systemMessage": message}
 
 
 def _additional_context(event_name: str, text: str) -> dict[str, Any]:
-    return {
-        "hookSpecificOutput": {
-            "hookEventName": event_name,
-            "additionalContext": text,
-        }
-    }
+    return {"hookSpecificOutput": {"hookEventName": event_name, "additionalContext": text}}
 
 
 def _parse_fields(prompt: str) -> dict[str, str]:
     matches: list[tuple[str, re.Match[str]]] = []
     cursor = 0
     for key in REQUIRED_FIELDS:
-        pattern = re.compile(rf"(?m)^{re.escape(key)}:(?:[ \t]*(.*))?$")
-        match = pattern.search(prompt, cursor)
+        match = re.compile(rf"(?m)^{re.escape(key)}:(?:[ \t]*(.*))?$").search(prompt, cursor)
         if match is None:
-            raise PacketError(f"missing or empty fields: {key}")
+            raise PacketError(f"packet v3 required; missing field: {key}")
         matches.append((key, match))
         cursor = match.end()
     fields: dict[str, str] = {}
@@ -106,9 +108,8 @@ def _parse_fields(prompt: str) -> dict[str, str]:
         end = matches[index + 1][1].start() if index + 1 < len(matches) else len(prompt)
         inline = (match.group(1) or "").strip()
         tail = prompt[match.end() : end].strip()
-        value = "\n".join(part for part in (inline, tail) if part).strip()
-        fields[key] = value
-    missing = [field for field in REQUIRED_FIELDS if not fields.get(field, "").strip()]
+        fields[key] = "\n".join(part for part in (inline, tail) if part).strip()
+    missing = [key for key, value in fields.items() if not value]
     if missing:
         raise PacketError(f"missing or empty fields: {', '.join(missing)}")
     return fields
@@ -120,54 +121,60 @@ def _list_items(value: str) -> list[str]:
         item = re.sub(r"^\s*(?:[-*]|\d+[.)])\s*", "", line).strip()
         if item:
             items.append(item)
-    if len(items) == 1 and "," in items[0]:
-        items = [part.strip() for part in items[0].split(",") if part.strip()]
     return items
 
 
-def _normalize_owned_path(root: Path, raw: str) -> tuple[str, Path]:
+def _normalize_path(root: Path, raw: str) -> tuple[str, Path]:
     if GLOB_RE.search(raw):
-        raise PacketError(f"OWNED_PATHS contains a glob: {raw}")
+        raise PacketError(f"path contains a glob: {raw}")
     pure = PurePosixPath(raw)
     if pure.is_absolute() or ".." in pure.parts or not pure.parts:
-        raise PacketError(f"OWNED_PATHS contains an unsafe path: {raw}")
+        raise PacketError(f"unsafe repository path: {raw}")
     normalized = pure.as_posix()
     candidate = (root / normalized).resolve(strict=False)
     try:
         candidate.relative_to(root)
     except ValueError as exc:
-        raise PacketError(f"OWNED_PATHS escapes the repository: {raw}") from exc
+        raise PacketError(f"path escapes the repository: {raw}") from exc
     if candidate.exists() and not candidate.is_file():
-        raise PacketError(f"OWNED_PATHS must list exact files, not directories: {raw}")
+        raise PacketError(f"path must identify a file: {raw}")
     return normalized, candidate
 
 
-def _validate_owned_paths(root: Path, value: str) -> list[str]:
+def _validate_owned_paths(root: Path, value: str, limit: int) -> list[str]:
     owned: list[str] = []
     resolved: list[Path] = []
     for raw in _list_items(value):
-        normalized, candidate = _normalize_owned_path(root, raw)
+        normalized, candidate = _normalize_path(root, raw)
         if normalized in owned:
             raise PacketError(f"duplicate OWNED_PATHS entry: {normalized}")
         for prior in resolved:
             if candidate in prior.parents or prior in candidate.parents:
-                raise PacketError(f"overlapping OWNED_PATHS entries: {normalized}")
+                raise PacketError(f"overlapping OWNED_PATHS entry: {normalized}")
         owned.append(normalized)
         resolved.append(candidate)
     if not owned:
         raise PacketError("OWNED_PATHS has no exact file entries")
+    if len(owned) > limit:
+        raise PacketError(f"WORKER_TARGET permits at most {limit} OWNED_PATHS entries")
     return owned
 
 
-def _validate_anchors(root: Path, value: str) -> list[str]:
+def _validate_anchors(root: Path, value: str, owned: list[str], limit: int) -> list[str]:
     anchors = _list_items(value)
+    if len(anchors) == 1 and anchors[0].upper() == "NONE":
+        if any((root / path).exists() for path in owned):
+            raise PacketError("CONTEXT_ANCHORS may be NONE only when every owned path is new")
+        return []
     if not anchors:
-        raise PacketError("EVIDENCE_ANCHORS has no anchors")
+        raise PacketError("CONTEXT_ANCHORS has no anchors")
+    if len(anchors) > limit:
+        raise PacketError(f"WORKER_TARGET permits at most {limit} CONTEXT_ANCHORS entries")
     for anchor in anchors:
         if "::" not in anchor:
             raise PacketError(f"anchor must use path::symbol: {anchor}")
         path_text, symbol = (part.strip() for part in anchor.split("::", 1))
-        normalized, path = _normalize_owned_path(root, path_text)
+        normalized, path = _normalize_path(root, path_text)
         if not path.is_file():
             raise PacketError(f"anchor path does not exist: {normalized}")
         if not symbol:
@@ -178,51 +185,62 @@ def _validate_anchors(root: Path, value: str) -> list[str]:
     return anchors
 
 
-def _validate_verification(value: str) -> list[str]:
+def _validate_verification(value: str) -> list[dict[str, Any]]:
     commands = [match.group(1).strip() for match in VERIFY_COMMAND_RE.finditer(value)]
-    expected = [match.group(1).strip() for match in VERIFY_EXPECTED_RE.finditer(value)]
-    if not commands or len(commands) != len(expected):
-        raise PacketError("VERIFICATION requires paired '- COMMAND:' and 'EXPECTED:' entries")
-    if any(not command or PLACEHOLDER_RE.search(command) for command in commands):
-        raise PacketError("VERIFICATION contains an empty or unresolved command")
-    if any(SHELL_MUTATION_RE.search(command) for command in commands):
-        raise PacketError("VERIFICATION contains shell mutation syntax")
-    return commands
+    exits = [int(match.group(1)) for match in VERIFY_EXIT_RE.finditer(value)]
+    if not commands or len(commands) != len(exits):
+        raise PacketError("VERIFICATION requires paired '- COMMAND:' and 'EXPECTED_EXIT:' entries")
+    if len(set(commands)) != len(commands):
+        raise PacketError("VERIFICATION contains a duplicate command")
+    for command in commands:
+        if PLACEHOLDER_RE.search(command) or SHELL_MUTATION_RE.search(command):
+            raise PacketError("VERIFICATION contains unresolved or mutating syntax")
+    return [{"command": command, "expected_exit": expected} for command, expected in zip(commands, exits)]
 
 
 def validate_packet(prompt: str, root: Path) -> dict[str, Any]:
     root = root.resolve()
     fields = _parse_fields(prompt)
     if fields["PACKET_VERSION"].strip() != PACKET_VERSION:
-        raise PacketError(f"PACKET_VERSION must be {PACKET_VERSION}")
-    if fields["READY_STATE"].strip() != READY_STATE:
-        raise PacketError(f"READY_STATE must be {READY_STATE}")
+        raise PacketError("packet v3 required; reinstall Aspera and start a new session")
+    target = fields["WORKER_TARGET"].strip().lower()
+    if target not in TARGETS:
+        raise PacketError("WORKER_TARGET must be luna or spark")
+    limits = TARGETS[target]
+    packet_bytes = len(prompt.encode("utf-8"))
+    if packet_bytes > limits["max_packet_bytes"]:
+        raise PacketError(f"{target} packet exceeds {limits['max_packet_bytes']} bytes")
     task_id = fields["TASK_ID"].strip()
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", task_id):
         raise PacketError("TASK_ID must be a stable identifier without whitespace")
     for key, value in fields.items():
-        if key != "HANDOFF_FORMAT" and PLACEHOLDER_RE.search(value):
+        if PLACEHOLDER_RE.search(value):
             raise PacketError(f"{key} contains an unresolved placeholder")
-    owned = _validate_owned_paths(root, fields["OWNED_PATHS"])
-    anchors = _validate_anchors(root, fields["EVIDENCE_ANCHORS"])
-    steps = STEP_RE.findall(fields["IMPLEMENTATION_STEPS"])
-    if not 3 <= len(steps) <= 7:
-        raise PacketError("IMPLEMENTATION_STEPS must contain 3-7 ordered steps")
-    commands = _validate_verification(fields["VERIFICATION"])
-    missing_handoff = [field for field in HANDOFF_FIELDS if field not in fields["HANDOFF_FORMAT"]]
-    if missing_handoff:
-        raise PacketError(f"HANDOFF_FORMAT missing fields: {', '.join(missing_handoff)}")
+    if target == "spark":
+        risk_text = "\n".join(fields[key] for key in ("OBJECTIVE", "CONTRACT", "ACCEPTANCE"))
+        match = SPARK_FORBIDDEN_RE.search(risk_text)
+        if match:
+            raise PacketError(f"Spark packet contains excluded risk scope: {match.group(0)}")
+    owned = _validate_owned_paths(root, fields["OWNED_PATHS"], int(limits["max_owned_paths"]))
+    anchors = _validate_anchors(root, fields["CONTEXT_ANCHORS"], owned, int(limits["max_anchors"]))
+    verification = _validate_verification(fields["VERIFICATION"])
     return {
         "task_id": task_id,
+        "target": target,
         "owned_paths": owned,
         "anchors": anchors,
-        "verification_commands": commands,
+        "verification": verification,
+        "packet_bytes": packet_bytes,
     }
 
 
 def _state_root() -> Path:
     override = os.environ.get("ASPERA_GUARD_STATE_DIR")
-    return Path(override) if override else Path(tempfile.gettempdir()) / "aspera-worker-guard-v2"
+    return Path(override) if override else Path(tempfile.gettempdir()) / "aspera-worker-guard-v3"
+
+
+def _receipt_root() -> Path:
+    return _state_root() / "receipts"
 
 
 def _state_key(event: dict[str, Any]) -> str:
@@ -237,22 +255,22 @@ def _state_path(event: dict[str, Any]) -> Path:
     return _state_root() / f"{_state_key(event)}.json"
 
 
-def _cleanup_stale_state(now: float) -> None:
-    root = _state_root()
-    if not root.is_dir():
-        return
-    for path in root.glob("*.json"):
-        try:
-            if now - path.stat().st_mtime > STATE_TTL_SECONDS:
-                path.unlink()
-        except FileNotFoundError:
+def _cleanup_stale(now: float) -> None:
+    for root in (_state_root(), _receipt_root()):
+        if not root.is_dir():
             continue
+        for path in root.glob("*.json"):
+            try:
+                if now - path.stat().st_mtime > STATE_TTL_SECONDS:
+                    path.unlink()
+            except FileNotFoundError:
+                pass
 
 
-def _write_state(path: Path, state: dict[str, Any]) -> None:
+def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     temporary = path.with_suffix(f".tmp.{os.getpid()}")
-    temporary.write_text(json.dumps(state, sort_keys=True), encoding="utf-8")
+    temporary.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
     os.chmod(temporary, 0o600)
     temporary.replace(path)
 
@@ -260,29 +278,38 @@ def _write_state(path: Path, state: dict[str, Any]) -> None:
 def _read_state(event: dict[str, Any]) -> tuple[Path, dict[str, Any]]:
     path = _state_path(event)
     try:
-        state = json.loads(path.read_text(encoding="utf-8"))
+        return path, json.loads(path.read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError) as exc:
         raise PacketError("worker guard is not armed for this turn") from exc
-    return path, state
 
 
 def _hash_owned(root: Path, owned: list[str]) -> dict[str, str | None]:
-    hashes: dict[str, str | None] = {}
-    for relative in owned:
-        path = root / relative
-        hashes[relative] = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
-    return hashes
+    return {
+        relative: hashlib.sha256((root / relative).read_bytes()).hexdigest()
+        if (root / relative).is_file()
+        else None
+        for relative in owned
+    }
+
+
+def _changed_paths(state: dict[str, Any]) -> list[str]:
+    current = _hash_owned(Path(state["repository_root"]), state["owned_paths"])
+    return sorted(path for path, digest in current.items() if digest != state["baseline_hashes"].get(path))
 
 
 def _tool_command(event: dict[str, Any]) -> str:
     tool_input = event.get("tool_input")
     if not isinstance(tool_input, dict):
         return ""
-    return str(tool_input.get("command") or tool_input.get("cmd") or "").strip()
+    return str(tool_input.get("command") or tool_input.get("cmd") or tool_input.get("patch") or "").strip()
 
 
 def _patch_paths(command: str) -> list[str]:
     return [match.group(1).strip() for match in PATCH_PATH_RE.finditer(command)]
+
+
+def _is_shell_tool(name: str) -> bool:
+    return name in {"Bash", "exec_command"}
 
 
 def _read_only_shell(command: str) -> bool:
@@ -313,8 +340,30 @@ def _read_only_shell(command: str) -> bool:
     return True
 
 
-def _deadline_expired(state: dict[str, Any], now: float) -> bool:
-    return state.get("first_edit_at") is None and now - float(state["accepted_at"]) >= FIRST_EDIT_DEADLINE_SECONDS
+def _response_exit_code(response: Any) -> int | None:
+    if isinstance(response, dict):
+        value = response.get("exit_code")
+        if isinstance(value, int):
+            return value
+        for nested in response.values():
+            result = _response_exit_code(nested)
+            if result is not None:
+                return result
+    if isinstance(response, list):
+        for nested in response:
+            result = _response_exit_code(nested)
+            if result is not None:
+                return result
+    return None
+
+
+def _deadline_reason(state: dict[str, Any], now: float) -> str | None:
+    if state.get("decisive_at") is None and now >= float(state["evidence_deadline_at"]):
+        return "no edit, decisive verification, or blocked handoff before the evidence deadline"
+    edit_deadline = state.get("edit_deadline_at")
+    if edit_deadline is not None and state.get("first_edit_at") is None and now >= float(edit_deadline):
+        return "pre-edit verification completed but no edit followed within the additional edit window"
+    return None
 
 
 def _handle_prompt(event: dict[str, Any], now: float) -> dict[str, Any]:
@@ -324,24 +373,44 @@ def _handle_prompt(event: dict[str, Any], now: float) -> dict[str, Any]:
         packet = validate_packet(prompt, root)
     except PacketError as exc:
         return _hook_block("PACKET_REJECTED", str(exc))
-    _cleanup_stale_state(now)
+    expected_model = TARGETS[packet["target"]]["model"]
+    actual_model = str(event.get("model") or "")
+    if actual_model and actual_model != expected_model:
+        return _hook_block(
+            "WORKER_MODEL_MISMATCH",
+            f"WORKER_TARGET {packet['target']} requires {expected_model}, got {actual_model}",
+        )
+    limits = TARGETS[packet["target"]]
+    _cleanup_stale(now)
+    verification = {
+        item["command"]: {"expected_exit": item["expected_exit"], "observed_exit": None, "runs": 0}
+        for item in packet["verification"]
+    }
+    baseline = _hash_owned(root, packet["owned_paths"])
     state = {
         "accepted_at": now,
+        "baseline_hashes": baseline,
+        "current_hashes": baseline,
+        "decisive_at": None,
+        "edit_deadline_at": None,
+        "evidence_deadline_at": now + float(limits["evidence_deadline_seconds"]),
         "first_edit_at": None,
         "inspection_count": 0,
+        "inspection_total": 0,
         "last_classification": "PACKET_ACCEPTED",
-        "owned_hashes": _hash_owned(root, packet["owned_paths"]),
+        "max_inspections": int(limits["max_inspections"]),
         "owned_paths": packet["owned_paths"],
-        "phase": "ORIENTING",
+        "packet_bytes": packet["packet_bytes"],
         "repository_root": str(root),
         "task_id": packet["task_id"],
-        "verification_commands": packet["verification_commands"],
+        "target": packet["target"],
+        "verification": verification,
         "violations": 0,
     }
-    _write_state(_state_path(event), state)
+    _write_json(_state_path(event), state)
     return _additional_context(
         "UserPromptSubmit",
-        f"ASPERA_GUARD_ARMED TASK_ID={packet['task_id']} FIRST_EDIT_DEADLINE_SECONDS=90 MAX_INSPECTIONS=4",
+        f"ASPERA_GUARD_ARMED TARGET={packet['target']} DEADLINE_SECONDS={int(limits['evidence_deadline_seconds'])} MAX_INSPECTIONS={limits['max_inspections']}",
     )
 
 
@@ -350,37 +419,43 @@ def _handle_pre_tool(event: dict[str, Any], now: float) -> dict[str, Any]:
         path, state = _read_state(event)
     except PacketError as exc:
         return _hook_block("PACKET_REJECTED", str(exc))
-    if _deadline_expired(state, now):
-        state["last_classification"] = "FIRST_EDIT_DEADLINE"
-        _write_state(path, state)
-        return _hook_block("FIRST_EDIT_DEADLINE", "no successful owned-file edit within 90 seconds")
+    reason = _deadline_reason(state, now)
+    if reason:
+        state["last_classification"] = "PROGRESS_DEADLINE"
+        _write_json(path, state)
+        return _hook_block("PROGRESS_DEADLINE", reason)
     tool_name = str(event.get("tool_name") or "")
     command = _tool_command(event)
-    owned = set(state["owned_paths"])
     if tool_name == "apply_patch":
         patch_paths = _patch_paths(command)
         if not patch_paths:
             return _hook_block("OWNERSHIP_VIOLATION", "apply_patch did not expose an exact target path")
-        invalid = [item for item in patch_paths if PurePosixPath(item).as_posix() not in owned]
+        invalid = [item for item in patch_paths if PurePosixPath(item).as_posix() not in set(state["owned_paths"])]
         if invalid:
             state["violations"] += 1
             state["last_classification"] = "OWNERSHIP_VIOLATION"
-            _write_state(path, state)
+            _write_json(path, state)
             return _hook_block("OWNERSHIP_VIOLATION", f"patch targets outside OWNED_PATHS: {', '.join(invalid)}")
         return {}
-    if tool_name == "Bash":
-        if state["phase"] == "IMPLEMENTING" and command in state["verification_commands"]:
+    if _is_shell_tool(tool_name):
+        if command in state["verification"]:
             return {}
-        if not _read_only_shell(command):
-            state["violations"] += 1
-            state["last_classification"] = "SHELL_MUTATION_BLOCKED"
-            _write_state(path, state)
-            return _hook_block("SHELL_MUTATION_BLOCKED", "tracked-file changes must use apply_patch; only exact verification commands may execute after the first edit")
-    if int(state["inspection_count"]) >= MAX_INSPECTIONS:
+        if _read_only_shell(command):
+            if int(state["inspection_count"]) >= int(state["max_inspections"]):
+                state["violations"] += 1
+                state["last_classification"] = "NO_PROGRESS_BUDGET_EXHAUSTED"
+                _write_json(path, state)
+                return _hook_block("NO_PROGRESS_BUDGET_EXHAUSTED", "return a blocked handoff or make decisive progress")
+            return {}
+        state["violations"] += 1
+        state["last_classification"] = "SHELL_MUTATION_BLOCKED"
+        _write_json(path, state)
+        return _hook_block("SHELL_MUTATION_BLOCKED", "only read-only inspection or exact verification commands are allowed")
+    if int(state["inspection_count"]) >= int(state["max_inspections"]):
         state["violations"] += 1
         state["last_classification"] = "NO_PROGRESS_BUDGET_EXHAUSTED"
-        _write_state(path, state)
-        return _hook_block("NO_PROGRESS_BUDGET_EXHAUSTED", "four inspection calls completed without a progress action; return a blocked handoff")
+        _write_json(path, state)
+        return _hook_block("NO_PROGRESS_BUDGET_EXHAUSTED", "return a blocked handoff or make decisive progress")
     return {}
 
 
@@ -391,28 +466,40 @@ def _handle_post_tool(event: dict[str, Any], now: float) -> dict[str, Any]:
         return {}
     tool_name = str(event.get("tool_name") or "")
     command = _tool_command(event)
-    root = Path(state["repository_root"])
     if tool_name == "apply_patch":
-        current = _hash_owned(root, state["owned_paths"])
-        if current != state["owned_hashes"]:
-            state["owned_hashes"] = current
-            if state["first_edit_at"] is None:
-                state["first_edit_at"] = now
-            state["phase"] = "IMPLEMENTING"
+        current = _hash_owned(Path(state["repository_root"]), state["owned_paths"])
+        if current != state["current_hashes"]:
+            state["current_hashes"] = current
+            state["first_edit_at"] = state["first_edit_at"] or now
+            state["decisive_at"] = state["decisive_at"] or now
+            state["edit_deadline_at"] = None
             state["inspection_count"] = 0
             state["last_classification"] = "PROGRESS_EDIT"
-            _write_state(path, state)
-            return _additional_context("PostToolUse", "ASPERA_GUARD PROGRESS_EDIT: owned-file content changed; no-progress budget reset")
-    elif tool_name == "Bash" and state["phase"] == "IMPLEMENTING" and command in state["verification_commands"]:
+            _write_json(path, state)
+            return _additional_context("PostToolUse", "ASPERA_GUARD PROGRESS_EDIT")
+    elif _is_shell_tool(tool_name) and command in state["verification"]:
+        observed = _response_exit_code(event.get("tool_response"))
+        record = state["verification"][command]
+        record["runs"] = int(record["runs"]) + 1
+        record["observed_exit"] = observed
+        state["decisive_at"] = state["decisive_at"] or now
+        if state["first_edit_at"] is None:
+            window = float(TARGETS[state["target"]]["evidence_deadline_seconds"])
+            state["edit_deadline_at"] = now + window
         state["inspection_count"] = 0
-        state["last_classification"] = "PROGRESS_VERIFICATION"
-        _write_state(path, state)
-        return _additional_context("PostToolUse", "ASPERA_GUARD PROGRESS_VERIFICATION: exact verification command completed; no-progress budget reset")
+        passed = observed == int(record["expected_exit"])
+        state["last_classification"] = "VERIFICATION_PASSED" if passed else "VERIFICATION_FAILED"
+        _write_json(path, state)
+        return _additional_context(
+            "PostToolUse",
+            f"ASPERA_GUARD {state['last_classification']} EXPECTED={record['expected_exit']} OBSERVED={observed}",
+        )
     state["inspection_count"] = int(state["inspection_count"]) + 1
+    state["inspection_total"] = int(state["inspection_total"]) + 1
     state["last_classification"] = "INSPECTION"
-    _write_state(path, state)
-    if state["inspection_count"] == MAX_INSPECTIONS:
-        return _additional_context("PostToolUse", "ASPERA_GUARD INSPECTION_LIMIT: the next tool must be an owned apply_patch or an exact verification command; otherwise return blocked")
+    _write_json(path, state)
+    if state["inspection_count"] == state["max_inspections"]:
+        return _additional_context("PostToolUse", "ASPERA_GUARD INSPECTION_LIMIT: next action must be decisive or return blocked")
     return {}
 
 
@@ -421,29 +508,93 @@ def _handle_pre_compact(event: dict[str, Any]) -> dict[str, Any]:
         path, state = _read_state(event)
     except PacketError:
         return {}
-    if str(event.get("trigger") or "") == "auto" and state.get("first_edit_at") is None:
-        state["last_classification"] = "PRE_EDIT_COMPACTION"
-        _write_state(path, state)
-        return _hook_stop("PRE_EDIT_COMPACTION", "automatic compaction before the first successful edit is forbidden")
+    if str(event.get("trigger") or "") == "auto" and state.get("decisive_at") is None:
+        state["last_classification"] = "PRE_EVIDENCE_COMPACTION"
+        _write_json(path, state)
+        return _hook_stop("PRE_EVIDENCE_COMPACTION", "automatic compaction before decisive evidence is forbidden")
     return {}
 
 
-def _valid_handoff(message: str, task_id: str) -> bool:
+def _handoff_value(message: str, field: str) -> str:
+    headings = "|".join(re.escape(item) for item in HANDOFF_FIELDS)
+    match = re.search(rf"(?ms)^{re.escape(field)}\s*(.*?)(?=^(?:{headings})|\Z)", message)
+    return match.group(1).strip() if match else ""
+
+
+def _valid_handoff_shape(message: str, task_id: str) -> tuple[bool, str]:
     if not all(field in message for field in HANDOFF_FIELDS):
-        return False
-    return f"TASK_ID: {task_id}" in message and re.search(r"(?m)^STATUS:\s*(?:done|blocked|failed)\s*$", message) is not None
+        return False, "canonical handoff fields are missing"
+    status = _handoff_value(message, "STATUS:")
+    if status not in {"done", "blocked", "failed"}:
+        return False, "STATUS must be done, blocked, or failed"
+    if _handoff_value(message, "TASK_ID:") != task_id:
+        return False, "TASK_ID does not match the packet"
+    return True, status
 
 
-def _handle_stop(event: dict[str, Any]) -> dict[str, Any]:
+def _handoff_changed_files(message: str) -> list[str]:
+    value = _handoff_value(message, "CHANGED FILES:")
+    if value.lower() in {"none", "none."}:
+        return []
+    return sorted(_list_items(value))
+
+
+def _write_receipt(state: dict[str, Any], status: str, now: float) -> None:
+    verification_exits = [
+        {"expected": record["expected_exit"], "observed": record["observed_exit"]}
+        for record in state["verification"].values()
+    ]
+    payload = {
+        "accepted_at": state["accepted_at"],
+        "changed_path_count": len(_changed_paths(state)),
+        "completed_at": now,
+        "decisive_seconds": None if state["decisive_at"] is None else state["decisive_at"] - state["accepted_at"],
+        "final_classification": state["last_classification"],
+        "first_edit_seconds": None if state["first_edit_at"] is None else state["first_edit_at"] - state["accepted_at"],
+        "inspection_count": state["inspection_total"],
+        "packet_bytes": state["packet_bytes"],
+        "status": status,
+        "target": state["target"],
+        "verification_exits": verification_exits,
+        "violations": state["violations"],
+    }
+    key = hashlib.sha256(f"{state['accepted_at']}:{state['task_id']}".encode()).hexdigest()
+    _write_json(_receipt_root() / f"{key}.json", payload)
+
+
+def _handle_stop(event: dict[str, Any], now: float) -> dict[str, Any]:
     try:
         path, state = _read_state(event)
     except PacketError:
         return {}
     message = str(event.get("last_assistant_message") or "")
-    if not _valid_handoff(message, state["task_id"]):
+    valid, status_or_reason = _valid_handoff_shape(message, state["task_id"])
+    if not valid:
         state["last_classification"] = "INVALID_HANDOFF"
-        _write_state(path, state)
-        return _hook_block("INVALID_HANDOFF", "return the canonical handoff with the packet TASK_ID")
+        _write_json(path, state)
+        return _hook_block("INVALID_HANDOFF", status_or_reason)
+    status = status_or_reason
+    actual_changed = _changed_paths(state)
+    reported_changed = _handoff_changed_files(message)
+    if reported_changed != actual_changed:
+        state["last_classification"] = "UNTRUTHFUL_CHANGED_FILES"
+        _write_json(path, state)
+        return _hook_block(
+            "UNTRUTHFUL_CHANGED_FILES",
+            f"reported {reported_changed or ['None']}, observed {actual_changed or ['None']}",
+        )
+    if status == "done":
+        incomplete = [
+            command
+            for command, record in state["verification"].items()
+            if record["observed_exit"] != record["expected_exit"]
+        ]
+        if incomplete:
+            state["last_classification"] = "VERIFICATION_INCOMPLETE"
+            _write_json(path, state)
+            return _hook_block("VERIFICATION_INCOMPLETE", "done requires every verification command to pass")
+    state["last_classification"] = f"HANDOFF_{status.upper()}"
+    _write_receipt(state, status, now)
     path.unlink(missing_ok=True)
     return {}
 
@@ -460,13 +611,25 @@ def handle_hook(event: dict[str, Any], now: float | None = None) -> dict[str, An
     if name == "PreCompact":
         return _handle_pre_compact(event)
     if name == "Stop":
-        return _handle_stop(event)
+        return _handle_stop(event, current)
     return {}
+
+
+def _list_receipts() -> list[dict[str, Any]]:
+    receipts: list[dict[str, Any]] = []
+    if _receipt_root().is_dir():
+        for path in sorted(_receipt_root().glob("*.json")):
+            try:
+                receipts.append(json.loads(path.read_text(encoding="utf-8")))
+            except json.JSONDecodeError:
+                continue
+    return receipts
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--validate-packet", action="store_true")
+    parser.add_argument("--list-receipts", action="store_true")
     parser.add_argument("--root", default=os.getcwd())
     args = parser.parse_args()
     if args.validate_packet:
@@ -475,7 +638,10 @@ def main() -> int:
         except PacketError as exc:
             print(f"PACKET_REJECTED: {exc}", file=sys.stderr)
             return 1
-        print(f"PACKET_ACCEPTED TASK_ID={packet['task_id']}")
+        print(f"PACKET_ACCEPTED TASK_ID={packet['task_id']} TARGET={packet['target']}")
+        return 0
+    if args.list_receipts:
+        _json_output(_list_receipts())
         return 0
     try:
         event = json.load(sys.stdin)

@@ -243,136 +243,102 @@ def _check_skill_frontmatter(path: Path, results: List[ValidationResult]) -> Non
 
 def _check_orchestrate_activation_rules(repo_root: Path, plugin_dir: Path, results: List[ValidationResult]) -> None:
     root_policy = repo_root / "AGENTS.md"
-    managed_policy = (
-        plugin_dir
-        / "skills"
-        / "orchestrate"
-        / "references"
-        / "policy.md"
-    )
+    managed_policy = plugin_dir / "skills" / "orchestrate" / "references" / "policy.md"
+    protocol = plugin_dir / "skills" / "orchestrate" / "references" / "protocol.md"
+    for path in (root_policy, managed_policy, protocol):
+        if not path.is_file():
+            fail(results, str(path), "missing routing contract")
+            return
 
-    if not root_policy.is_file():
-        fail(results, str(root_policy), "missing root AGENTS.md for activation policy")
-        return
-    if not managed_policy.is_file():
-        fail(results, str(managed_policy), "missing orchestrator managed policy file")
-        return
-
-    root_lines = root_policy.read_text(encoding="utf-8", errors="ignore").splitlines()
-    managed_lines = managed_policy.read_text(encoding="utf-8", errors="ignore").splitlines()
-
-    root_activation = _extract_section(root_lines, "Activation")
-    managed_activation = _extract_section(managed_lines, "Activation")
-    if not root_activation:
-        fail(results, str(root_policy), "AGENTS.md missing Activation section")
+    root_text = _load_text(root_policy).lower()
+    managed_text = _load_text(managed_policy).lower()
+    protocol_text = _load_text(protocol).lower()
+    if "always implement aspera itself parent-direct" not in root_text:
+        fail(results, str(root_policy), "Aspera development is not explicitly parent-direct")
     else:
-        ok(results, str(root_policy), "AGENTS.md has Activation section")
-    if not managed_activation:
-        fail(results, str(managed_policy), "managed policy missing Activation section")
-    else:
-        ok(results, str(managed_policy), "managed policy has Activation section")
+        ok(results, str(root_policy), "Aspera development bypasses its downstream orchestrator")
 
-    required_boundaries = (
-        "implementation work",
-        "reviews",
-        "explanations",
-        "status requests",
-        "setup",
-        "doctor",
-        "installation",
-        "uninstall",
+    installation_contract = (
+        "./aspera install --workspace",
+        "preserve the installed profile and policy",
+        "classify every known current and legacy destination",
+        "commit the receipt last",
+        "supported codex plugin commands",
+        "never run doctor automatically",
+        "never edit codex cache or configuration files directly",
     )
-    for policy_path, activation in (
-        (root_policy, root_activation),
-        (managed_policy, managed_activation),
-    ):
-        missing = [term for term in required_boundaries if term not in activation]
-        if missing:
-            fail(results, str(policy_path), f"Activation contract missing: {', '.join(missing)}")
-        else:
-            ok(results, str(policy_path), "activation scope and exclusions are complete")
-
-    managed_text = "\n".join(managed_lines).lower()
-    portable_terms = (
-        ".codex/agents/aspera-*.toml",
-        ".codex/aspera-orchestrator/state.json",
-        "does not depend on the `orchestrate` skill",
-        "setup metadata",
-    )
-    missing = [term for term in portable_terms if term not in managed_text]
+    missing = [term for term in installation_contract if term not in root_text]
     if missing:
-        fail(results, str(managed_policy), f"managed policy missing portable contract: {', '.join(missing)}")
-    elif "plugins/aspera-orchestrator" in managed_text:
-        fail(results, str(managed_policy), "managed policy still references source-checkout plugin paths")
+        fail(results, str(root_policy), f"stable installation contract missing: {', '.join(missing)}")
     else:
-        ok(results, str(managed_policy), "managed policy is portable and skill-attachment independent")
+        ok(results, str(root_policy), "one-command installation invariants are explicit")
+
+    required_policy = (
+        "luna max is the default worker",
+        "spark is optional",
+        "explicit direct/no-delegation",
+        ".codex/aspera-orchestrator/protocol.md",
+        "no recursive delegation",
+        "development of aspera itself",
+    )
+    missing = [term for term in required_policy if term not in managed_text]
+    if missing:
+        fail(results, str(managed_policy), f"managed router missing: {', '.join(missing)}")
+    elif len(managed_policy.read_bytes()) > 2048:
+        fail(results, str(managed_policy), "always-loaded managed router exceeds 2 KB")
+    else:
+        ok(results, str(managed_policy), "portable Luna-first router fits the 2 KB quota budget")
+
+    forbidden_modes = ("direct:", "express:", "standard:")
+    present = [term for term in forbidden_modes if term in managed_text or term in protocol_text]
+    if present:
+        fail(results, str(managed_policy), f"public mode taxonomy remains: {', '.join(present)}")
+    else:
+        ok(results, str(managed_policy), "public mode taxonomy removed")
+
+    required_protocol = (
+        "packet_version: 3",
+        "worker_target: luna | spark",
+        "unchanged luna-ready capsule",
+        "do not retry spark",
+        "never use spark",
+        "expected_exit",
+    )
+    missing = [term for term in required_protocol if term not in protocol_text]
+    if missing:
+        fail(results, str(protocol), f"lazy protocol missing: {', '.join(missing)}")
+    else:
+        ok(results, str(protocol), "lazy packet-v3 and Spark boundary contract is complete")
 
 
 def _check_worker_runtime_contract(repo_root: Path, plugin_dir: Path, results: List[ValidationResult]) -> None:
-    lifecycle_paths = (
-        repo_root / "AGENTS.md",
-        plugin_dir / "skills" / "orchestrate" / "SKILL.md",
-        plugin_dir / "skills" / "orchestrate" / "references" / "policy.md",
+    assets = plugin_dir / "skills" / "setup" / "assets"
+    workers = (
+        assets / "profiles" / "shared" / "luna-worker.toml",
+        assets / "profiles" / "adaptive" / "spark-worker.toml",
     )
-    lifecycle_terms = (
-        "clean worktree",
-        "quota change",
-        "sandbox/approval state",
-        "working directory",
-        "latest tool event",
-        "90 seconds",
-        "four inspection",
-        "compaction",
-        "total",
-        "fresh worker",
-        "failed delegation",
-        "parent intervention",
-    )
-    for path in lifecycle_paths:
+    required_hooks = {"UserPromptSubmit", "PreToolUse", "PostToolUse", "PreCompact", "Stop"}
+    for path in workers:
         text = _load_text(path).lower()
-        missing = [term for term in lifecycle_terms if term not in text]
-        if missing:
-            fail(results, str(path), f"worker lifecycle contract missing: {', '.join(missing)}")
-        else:
-            ok(results, str(path), "worker lifecycle diagnosis contract is complete")
-
-    worker_terms = (
-        "packet_version 2",
-        "evidence_anchors",
-        "apply_patch",
-        "four inspection",
-        "90 seconds",
-        "automatic compaction",
-        "do not restate the plan",
-        "blocked handoff",
-        "unreported reasoning",
-        "verification command",
-    )
-    for profile in ("spark", "luna"):
-        path = plugin_dir / "skills" / "setup" / "assets" / "profiles" / profile / "worker.toml"
-        text = _load_text(path).lower()
-        missing = [term for term in worker_terms if term not in text]
+        required = ("packet_version 3", "apply_patch", "verification", "blocked", "no recursive delegation")
+        missing = [term for term in required if term not in text]
         if missing:
             fail(results, str(path), f"worker action contract missing: {', '.join(missing)}")
-        else:
-            ok(results, str(path), "worker action/blocking contract is complete")
-        with path.open("rb") as handle:
-            worker_data = tomllib.load(handle)
-        hooks = worker_data.get("hooks", {})
-        required_hooks = {"UserPromptSubmit", "PreToolUse", "PostToolUse", "PreCompact", "Stop"}
+            continue
+        data = _load_toml(path)
+        hooks = data.get("hooks", {})
         if set(hooks) != required_hooks:
-            fail(results, str(path), "worker hook set is incomplete or contains unexpected events")
+            fail(results, str(path), "worker hook set is incomplete or unexpected")
         elif any(
-            entry.get("hooks", [{}])[0].get("command")
-            != "python3 .codex/aspera-orchestrator/worker_guard.py"
+            entry.get("hooks", [{}])[0].get("command") != "python3 .codex/aspera-orchestrator/worker_guard.py"
             for event in required_hooks
             for entry in hooks[event]
         ):
             fail(results, str(path), "worker hooks do not use the managed guard")
         else:
-            ok(results, str(path), "worker hooks use the exact managed guard")
+            ok(results, str(path), "packet-v3 worker and managed hooks are complete")
 
-    guard_path = plugin_dir / "skills" / "setup" / "assets" / "worker_guard.py"
+    guard_path = assets / "worker_guard.py"
     guard_text = _load_text(guard_path)
     try:
         compile(guard_text, str(guard_path), "exec")
@@ -380,21 +346,26 @@ def _check_worker_runtime_contract(repo_root: Path, plugin_dir: Path, results: L
         fail(results, str(guard_path), f"worker guard syntax invalid: {exc}")
     else:
         guard_terms = (
-            'PACKET_VERSION = "2"',
-            "FIRST_EDIT_DEADLINE_SECONDS = 90.0",
-            "MAX_INSPECTIONS = 4",
-            "PACKET_REJECTED",
+            'PACKET_VERSION = "3"',
+            '"max_owned_paths": 12',
+            '"max_owned_paths": 4',
+            '"max_anchors": 8',
+            '"max_anchors": 2',
+            '"evidence_deadline_seconds": 180.0',
+            '"evidence_deadline_seconds": 90.0',
+            "WORKER_MODEL_MISMATCH",
             "NO_PROGRESS_BUDGET_EXHAUSTED",
-            "PRE_EDIT_COMPACTION",
+            "PRE_EVIDENCE_COMPACTION",
             "OWNERSHIP_VIOLATION",
-            "SHELL_MUTATION_BLOCKED",
-            "INVALID_HANDOFF",
+            "UNTRUTHFUL_CHANGED_FILES",
+            "VERIFICATION_INCOMPLETE",
+            "receipts",
         )
         missing_guard = [term for term in guard_terms if term not in guard_text]
         if missing_guard:
             fail(results, str(guard_path), f"worker guard contract missing: {', '.join(missing_guard)}")
         else:
-            ok(results, str(guard_path), "worker guard state machine is complete")
+            ok(results, str(guard_path), "Luna/Spark packet-v3 state machine is complete")
 
     doctor_path = plugin_dir / "skills" / "setup" / "scripts" / "doctor.sh"
     common_path = plugin_dir / "skills" / "setup" / "scripts" / "common.sh"
@@ -414,7 +385,11 @@ def _check_worker_runtime_contract(repo_root: Path, plugin_dir: Path, results: L
         ok(results, str(common_path), "install and diagnosis contain no runtime smoke or model probe")
 
     install_terms = (
-        "schema_version': 3",
+        "schema_version': 4",
+        "adaptive",
+        "aspera-luna-worker.toml",
+        "aspera-spark-worker.toml",
+        "protocol.md",
         "asp_state_validate_supported",
         "snapshot-before",
         "snapshot-after",
@@ -432,7 +407,17 @@ def _check_worker_runtime_contract(repo_root: Path, plugin_dir: Path, results: L
         fail(results, str(root_cli), "missing root lifecycle command")
     else:
         cli_text = _load_text(root_cli).lower()
-        cli_terms = ("install)", "diagnose)", "uninstall)", "plugin marketplace list --json", "plugin add")
+        cli_terms = (
+            "install)",
+            "diagnose)",
+            "uninstall)",
+            "--install-policy|--no-policy",
+            "plugin marketplace list --json",
+            "plugin list --json",
+            "plugin remove",
+            "plugin add",
+            "inspect_plugin_list",
+        )
         missing = [term for term in cli_terms if term not in cli_text]
         if missing:
             fail(results, str(root_cli), f"root lifecycle command missing: {', '.join(missing)}")
@@ -443,19 +428,14 @@ def _check_worker_runtime_contract(repo_root: Path, plugin_dir: Path, results: L
 
     eval_path = repo_root / "tests" / "evals" / "manual-eval-spec.json"
     eval_data = _read_json(eval_path)
-    metrics = eval_data.get("recorded_metrics", {}).get("aspera_orchestrator", {})
+    metrics = eval_data.get("recorded_metrics", {}).get("luna_route", {})
     telemetry = {
-        "time_to_first_tool",
-        "time_to_first_edit",
-        "handoff_received",
-        "steering_count",
-        "interrupted",
-        "interruption_reason",
-        "worktree_changes_before_interrupt",
-        "parent_takeover",
-        "packet_readiness_result",
-        "pre_edit_inspection_count",
-        "compactions_before_first_edit",
+        "packet_bytes",
+        "decisive_seconds",
+        "first_edit_seconds",
+        "inspection_count",
+        "changed_path_count",
+        "verification_exits",
         "guard_classification",
     }
     missing_metrics = sorted(telemetry.difference(metrics))
@@ -562,7 +542,7 @@ def _check_manual_eval_activation_records(repo_root: Path, results: List[Validat
     else:
         ok(results, str(eval_path), "negative activation record count matches fixture")
 
-    required_common_keys = ["id", "category", "mode", "delegation", "task_type", "expected_activation", "scenario"]
+    required_common_keys = ["id", "category", "route", "delegation", "task_type", "expected_activation", "scenario"]
     required_positive_keys = required_common_keys
     required_negative_keys = required_common_keys
     for record in records:
@@ -576,22 +556,22 @@ def _check_manual_eval_activation_records(repo_root: Path, results: List[Validat
         for required in (required_positive_keys if category == "positive" else required_negative_keys):
             if required not in record:
                 fail(results, str(eval_path), f"manual eval activation record {record.get('id')} missing {required}")
-        mode = record.get("mode")
+        route = record.get("route")
         if category == "positive":
-            if mode not in {"direct", "express", "standard"}:
-                fail(results, str(eval_path), f"manual eval record {record.get('id')} has invalid positive mode {mode!r}")
+            if route not in {"sol", "luna", "spark", "luna_with_post_review", "sol_with_pre_review_then_luna"}:
+                fail(results, str(eval_path), f"manual eval record {record.get('id')} has invalid route {route!r}")
             delegation = record.get("delegation")
             if not isinstance(delegation, list):
                 fail(results, str(eval_path), f"manual eval record {record.get('id')} delegation must be a list")
-            elif mode == "direct" and delegation:
-                fail(results, str(eval_path), f"manual eval record {record.get('id')} Direct mode must have zero delegation")
-            elif mode != "direct" and not delegation:
-                fail(results, str(eval_path), f"manual eval record {record.get('id')} delegated mode requires a role")
+            elif route == "sol" and delegation:
+                fail(results, str(eval_path), f"manual eval record {record.get('id')} Sol route must have zero delegation")
+            elif route != "sol" and not delegation:
+                fail(results, str(eval_path), f"manual eval record {record.get('id')} delegated route requires a role")
             if record.get("expected_activation") is not True:
                 fail(results, str(eval_path), f"manual eval record {record.get('id')} should be positive expected_activation=True")
         else:
-            if mode not in {"none", "not_applicable", "excluded"}:
-                fail(results, str(eval_path), f"manual eval record {record.get('id')} has invalid negative mode {mode!r}")
+            if route != "excluded":
+                fail(results, str(eval_path), f"manual eval record {record.get('id')} has invalid excluded route {route!r}")
             delegation = record.get("delegation")
             if delegation not in ([], None):
                 fail(results, str(eval_path), f"manual eval record {record.get('id')} should not expect delegation")
@@ -600,6 +580,41 @@ def _check_manual_eval_activation_records(repo_root: Path, results: List[Validat
 
     ok(results, str(eval_path), "manual activation records include category and delegation semantics")
 
+    thresholds = data.get("thresholds", {})
+    expected_thresholds = {
+        ("quality", "max_pass_deficit_vs_sol"): 0,
+        ("luna_core", "max_median_total_quota_ratio_vs_sol"): 0.6,
+        ("luna_core", "max_median_sol_parent_quota_ratio"): 0.6,
+        ("luna_core", "max_median_latency_ratio_vs_sol"): 2.0,
+        ("spark_incremental", "max_median_total_quota_ratio_vs_sol"): 0.6,
+        ("spark_incremental", "max_median_total_quota_ratio_vs_luna"): 0.8,
+        ("spark_incremental", "max_parent_packet_quota_ratio_vs_luna"): 1.05,
+        ("spark_incremental", "max_median_latency_ratio_vs_luna"): 1.25,
+        ("spark_incremental", "max_extra_context_construction_rate"): 0.0,
+        ("spark_incremental", "tuning_iterations_before_removal"): 1,
+        ("no_fit", "max_quota_ratio_vs_direct_sol"): 1.05,
+    }
+    bad = [
+        f"{section}.{key}"
+        for (section, key), expected in expected_thresholds.items()
+        if thresholds.get(section, {}).get(key) != expected
+    ]
+    if bad:
+        fail(results, str(eval_path), f"quota/quality release gates changed or missing: {', '.join(bad)}")
+    else:
+        ok(results, str(eval_path), "Luna and Spark go/no-go gates match the release contract")
+
+    instructions = data.get("instructions", {})
+    required_instructions = {
+        "use_identical_frozen_repository_state": True,
+        "use_identical_capsule_for_luna_and_spark": True,
+        "include_parent_packet_construction": True,
+    }
+    if any(instructions.get(key) is not value for key, value in required_instructions.items()):
+        fail(results, str(eval_path), "paired evaluation does not hold repository state, capsule, and parent construction constant")
+    else:
+        ok(results, str(eval_path), "paired evaluation controls are explicit")
+
 
 def _load_toml(path: Path) -> Dict[str, Any]:
     with path.open("rb") as handle:
@@ -607,52 +622,35 @@ def _load_toml(path: Path) -> Dict[str, Any]:
 
 
 def _check_setup_assets(plugin_dir: Path, results: List[ValidationResult]) -> None:
-    profile_expected = {
-        "spark": {
-            "explorer": ("aspera_explorer", "gpt-5.3-codex-spark", "read-only", "xhigh"),
-            "worker": ("aspera_worker", "gpt-5.3-codex-spark", "workspace-write", "xhigh"),
-            "verifier": ("aspera_verifier", "gpt-5.3-codex-spark", "workspace-write", "xhigh"),
-            "researcher": ("aspera_researcher", "gpt-5.6-luna", "read-only", "max"),
-            "reviewer": ("aspera_reviewer", "gpt-5.6-terra", "read-only", "high"),
-        },
-        "luna": {
-            "explorer": ("aspera_explorer", "gpt-5.6-luna", "read-only", "max"),
-            "worker": ("aspera_worker", "gpt-5.6-luna", "workspace-write", "max"),
-            "verifier": ("aspera_verifier", "gpt-5.6-luna", "workspace-write", "max"),
-            "researcher": ("aspera_researcher", "gpt-5.6-luna", "read-only", "max"),
-            "reviewer": ("aspera_reviewer", "gpt-5.6-terra", "read-only", "high"),
-        },
+    base = plugin_dir / "skills" / "setup" / "assets" / "profiles"
+    expected = {
+        base / "shared" / "explorer.toml": ("aspera_explorer", "gpt-5.6-luna", "read-only", "max"),
+        base / "shared" / "luna-worker.toml": ("aspera_luna_worker", "gpt-5.6-luna", "workspace-write", "max"),
+        base / "adaptive" / "spark-worker.toml": ("aspera_spark_worker", "gpt-5.3-codex-spark", "workspace-write", "xhigh"),
+        base / "shared" / "researcher.toml": ("aspera_researcher", "gpt-5.6-luna", "read-only", "max"),
+        base / "shared" / "reviewer.toml": ("aspera_reviewer", "gpt-5.6-terra", "read-only", "high"),
     }
-    for profile, role_map in profile_expected.items():
-        for role, values in role_map.items():
-            expected_name, expected_model, expected_sandbox, expected_effort = values
-            if role in {"explorer", "worker", "verifier"}:
-                path = plugin_dir / "skills" / "setup" / "assets" / "profiles" / profile / f"{role}.toml"
-            else:
-                path = plugin_dir / "skills" / "setup" / "assets" / "profiles" / "shared" / f"{role}.toml"
+    for path, values in expected.items():
+        if not path.is_file():
+            fail(results, str(path), "missing role asset TOML")
+            continue
+        try:
+            data = _load_toml(path)
+        except (tomllib.TOMLDecodeError, ValueError, OSError) as exc:
+            fail(results, str(path), f"invalid TOML: {exc}")
+            continue
+        keys = ("name", "model", "sandbox_mode", "model_reasoning_effort")
+        observed = tuple(data.get(key) for key in keys)
+        if observed != values:
+            fail(results, str(path), f"role mapping mismatch: expected {values}, got {observed}")
+        else:
+            ok(results, str(path), "role mapping matches Luna-first contract")
 
-            if not path.is_file():
-                fail(results, str(path), "missing role asset TOML")
-                continue
-
-            try:
-                data = _load_toml(path)
-            except (tomllib.TOMLDecodeError, ValueError, OSError) as exc:
-                fail(results, str(path), f"invalid TOML: {exc}")
-                continue
-            if data.get("name") != expected_name:
-                fail(results, str(path), f"incorrect name for {profile}/{role}")
-            if data.get("model") != expected_model:
-                fail(results, str(path), f"incorrect model for {profile}/{role}")
-            if data.get("sandbox_mode") != expected_sandbox:
-                fail(results, str(path), f"incorrect sandbox_mode for {profile}/{role}")
-            if data.get("model_reasoning_effort") != expected_effort:
-                fail(results, str(path), f"incorrect effort for {profile}/{role}")
-            if all(
-                key in data
-                for key in ("name", "model", "sandbox_mode", "model_reasoning_effort")
-            ):
-                ok(results, str(path), "role mapping matches strict contract")
+    verifier_assets = list(base.glob("**/*verifier*.toml"))
+    if verifier_assets:
+        fail(results, str(base), "default verifier role assets remain")
+    else:
+        ok(results, str(base), "default verifier role removed")
 
 
 def _check_manifest_and_marketplace(plugin_dir: Path, repo_root: Path, results: List[ValidationResult]) -> None:
@@ -676,8 +674,8 @@ def _check_manifest_and_marketplace(plugin_dir: Path, repo_root: Path, results: 
     else:
         ok(results, str(manifest_path), "manifest name matches plugin folder")
 
-    if manifest.get("version") != "0.3.0":
-        fail(results, str(manifest_path), "manifest version must be 0.3.0")
+    if manifest.get("version") != "0.4.0":
+        fail(results, str(manifest_path), "manifest version must be 0.4.0")
 
     marketplace_path = repo_root / ".agents" / "plugins" / "marketplace.json"
     if not marketplace_path.is_file():

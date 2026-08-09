@@ -1,25 +1,26 @@
 {
   "artifact_type": "manual_evaluation_protocol",
-  "artifact_version": "2.0",
+  "artifact_version": "3.0",
   "package": {
     "root": "plugins/aspera-orchestrator",
     "comparison": [
-      "sol-high-without-subagents",
-      "sol-high-parent-with-aspera"
+      "sol-high-direct",
+      "sol-high-parent-to-luna-max",
+      "sol-high-parent-to-spark"
     ],
     "contracts": [
-      "setup/install",
-      "setup/doctor",
-      "setup/uninstall",
-      "runtime/smoke",
-      "static_validation"
+      "routing",
+      "packet-v3",
+      "worker-lifecycle",
+      "setup-lifecycle",
+      "static-validation"
     ]
   },
   "fixture_counts": {
-    "direct_route_records": 5,
-    "bounded_route_records": 10,
-    "research_route_records": 5,
-    "risk_route_records": 5,
+    "no_fit_records": 5,
+    "luna_core_records": 10,
+    "spark_incremental_records": 12,
+    "risk_records": 5,
     "positive_activation_records": 5,
     "negative_activation_records": 3
   },
@@ -27,158 +28,179 @@
     {
       "id": "ASP-001",
       "category": "positive",
-      "mode": "express",
-      "task_type": "implementation",
-      "delegation": ["aspera_worker"],
+      "route": "luna",
+      "task_type": "contextual_implementation",
+      "delegation": ["aspera_luna_worker"],
       "expected_activation": true,
-      "scenario": "Single-file repository bugfix with explicit orchestrate picker invocation."
+      "scenario": "Bounded multi-file implementation requiring repository pattern selection."
     },
     {
       "id": "ASP-002",
       "category": "positive",
-      "mode": "standard",
-      "task_type": "implementation",
-      "delegation": ["aspera_explorer", "aspera_worker", "aspera_verifier"],
+      "route": "spark",
+      "task_type": "mechanical_implementation",
+      "delegation": ["aspera_spark_worker"],
       "expected_activation": true,
-      "scenario": "Multi-file implementation request in a repository with managed Aspera policy, without attaching the orchestrate skill."
+      "scenario": "Choice-free repetitive transformation whose unchanged Luna-ready capsule passes every Spark gate."
     },
     {
       "id": "ASP-003",
       "category": "positive",
-      "mode": "direct",
-      "task_type": "implementation",
+      "route": "sol",
+      "task_type": "no_fit_implementation",
       "delegation": [],
       "expected_activation": true,
-      "scenario": "Trivial implementation request in a repository with managed Aspera policy; Direct mode performs zero delegation."
+      "scenario": "Tiny edit where a handoff has negative expected value."
     },
     {
       "id": "ASP-004",
       "category": "positive",
-      "mode": "standard",
-      "task_type": "implementation",
-      "delegation": ["aspera_explorer", "aspera_worker", "aspera_verifier"],
+      "route": "luna_with_post_review",
+      "task_type": "schema_persistence_implementation",
+      "delegation": ["aspera_luna_worker", "aspera_reviewer"],
       "expected_activation": true,
-      "scenario": "Schema/migration plus model and runtime write-path implementation under managed Aspera policy; the escalation trigger requires Standard exploration, parent resolution, disjoint workers, and verification."
+      "scenario": "Additive schema and write-path change with settled architecture and post-diff Terra review."
     },
     {
       "id": "ASP-005",
       "category": "positive",
-      "mode": "express",
-      "task_type": "implementation",
-      "delegation": ["aspera_worker"],
+      "route": "sol_with_pre_review_then_luna",
+      "task_type": "destructive_or_exposure_risk",
+      "delegation": ["aspera_reviewer", "aspera_luna_worker"],
       "expected_activation": true,
-      "scenario": "Explicit one-task orchestrate selection for a bounded implementation with a decisive test."
+      "scenario": "Destructive or exposure-sensitive change requiring pre-edit Terra risk review."
     },
     {
       "id": "ASP-006",
       "category": "negative",
-      "mode": "not_applicable",
+      "route": "excluded",
       "task_type": "review_only",
       "delegation": null,
       "expected_activation": false,
-      "scenario": "With managed Aspera policy active, the request asks for code review without implementation changes."
+      "scenario": "Request asks for code review without implementation."
     },
     {
       "id": "ASP-007",
       "category": "negative",
-      "mode": "excluded",
-      "task_type": "tooling",
+      "route": "excluded",
+      "task_type": "setup_lifecycle",
       "delegation": null,
       "expected_activation": false,
-      "scenario": "With managed Aspera policy active, the request is for setup, doctor, installation, or uninstall work."
+      "scenario": "Request asks for setup, diagnosis, installation, or uninstall."
     },
     {
       "id": "ASP-008",
       "category": "negative",
-      "mode": "not_applicable",
-      "task_type": "status_only",
+      "route": "excluded",
+      "task_type": "status_or_explanation",
       "delegation": null,
       "expected_activation": false,
-      "scenario": "With managed Aspera policy active, the request asks for an explanation or status only."
+      "scenario": "Request asks only for explanation or status."
     }
   ],
+  "regression_scenarios": [
+    "tiny no-delegation edit",
+    "repetitive Spark transformation",
+    "context-heavy Luna implementation",
+    "broad release-goal slicing by Sol",
+    "schema and persistence change",
+    "destructive or exposure-sensitive change",
+    "insufficient worker context",
+    "late worker with no decisive evidence",
+    "partial edit",
+    "failed verification",
+    "interruption",
+    "single Luna repair",
+    "single explicit Spark-to-Luna upgrade",
+    "explicit direct request"
+  ],
   "thresholds": {
-    "direct_route": {
-      "target": 5,
-      "required_passes": 5,
-      "required_zero_delegation": true
-    },
-    "bounded_route_aspera_vs_sol": {
-      "target": 10,
-      "required_aspera_passes": 9,
-      "max_pass_deficit_vs_sol": 1,
-      "median_cost_ratio_vs_sol": 0.7,
+    "quality": {
+      "max_pass_deficit_vs_sol": 0,
+      "max_critical_regressions": 0,
       "max_ownership_violations": 0,
-      "max_silent_fallbacks": 0
+      "max_silent_substitutions": 0
     },
-    "research_route": {
-      "target": 5,
-      "median_cost_ratio_vs_sol": 0.7
+    "luna_core": {
+      "max_median_total_quota_ratio_vs_sol": 0.6,
+      "max_median_sol_parent_quota_ratio": 0.6,
+      "max_median_latency_ratio_vs_sol": 2.0,
+      "max_retry_rate": 0.1,
+      "max_parent_intervention_rate": 0.1
     },
-    "risk_route": {
-      "target": 5,
-      "required_terra_high_routes": 5
+    "spark_incremental": {
+      "max_median_total_quota_ratio_vs_sol": 0.6,
+      "max_median_total_quota_ratio_vs_luna": 0.8,
+      "max_parent_packet_quota_ratio_vs_luna": 1.05,
+      "max_median_latency_ratio_vs_luna": 1.25,
+      "max_median_latency_ratio_vs_sol": 2.0,
+      "max_block_rate": 0.05,
+      "max_upgrade_rate": 0.05,
+      "max_parent_intervention_rate": 0.05,
+      "max_extra_context_construction_rate": 0.0,
+      "tuning_iterations_before_removal": 1
     },
-    "max_parent_token_ratio_vs_sol": 0.6,
-    "activation_mix": {
-      "positive_count": 5,
-      "negative_count": 3
+    "no_fit": {
+      "max_quota_ratio_vs_direct_sol": 1.05
     }
   },
   "recorded_metrics": {
-    "sol_baseline": {
+    "sol_direct": {
       "input_tokens": null,
       "cached_input_tokens": null,
       "output_tokens": null,
       "reasoning_tokens": null,
       "credits_spent": null,
-      "normalized_cost": null,
+      "normalized_quota": null,
       "wall_time_seconds": null,
-      "delegation_count": null,
-      "retries": null,
-      "parent_interventions": null,
-      "time_to_first_tool": null,
-      "time_to_first_edit": null,
-      "handoff_received": null,
-      "steering_count": null,
-      "interrupted": null,
-      "interruption_reason": null,
-      "worktree_changes_before_interrupt": null,
-      "parent_takeover": null,
-      "packet_readiness_result": null,
-      "pre_edit_inspection_count": null,
-      "compactions_before_first_edit": null,
-      "guard_classification": null,
       "result": "pending"
     },
-    "aspera_orchestrator": {
-      "input_tokens": null,
-      "cached_input_tokens": null,
-      "output_tokens": null,
-      "reasoning_tokens": null,
+    "luna_route": {
+      "parent_input_tokens": null,
+      "parent_reasoning_tokens": null,
+      "worker_input_tokens": null,
+      "worker_reasoning_tokens": null,
       "credits_spent": null,
-      "normalized_cost": null,
+      "normalized_quota": null,
       "wall_time_seconds": null,
-      "delegation_count": null,
+      "packet_bytes": null,
+      "decisive_seconds": null,
+      "first_edit_seconds": null,
+      "inspection_count": null,
+      "changed_path_count": null,
+      "verification_exits": null,
+      "guard_classification": null,
       "retries": null,
       "parent_interventions": null,
-      "time_to_first_tool": null,
-      "time_to_first_edit": null,
-      "handoff_received": null,
-      "steering_count": null,
-      "interrupted": null,
-      "interruption_reason": null,
-      "worktree_changes_before_interrupt": null,
-      "parent_takeover": null,
-      "packet_readiness_result": null,
-      "pre_edit_inspection_count": null,
-      "compactions_before_first_edit": null,
+      "result": "pending"
+    },
+    "spark_route": {
+      "parent_input_tokens": null,
+      "parent_reasoning_tokens": null,
+      "worker_input_tokens": null,
+      "worker_reasoning_tokens": null,
+      "credits_spent": null,
+      "normalized_quota": null,
+      "wall_time_seconds": null,
+      "packet_bytes": null,
+      "decisive_seconds": null,
+      "first_edit_seconds": null,
+      "inspection_count": null,
+      "changed_path_count": null,
+      "verification_exits": null,
       "guard_classification": null,
+      "blocked": null,
+      "upgraded_to_luna": null,
+      "extra_context_constructed": null,
+      "parent_interventions": null,
       "result": "pending"
     }
   },
   "instructions": {
-    "do_not_emit_pass_or_fail": true,
+    "use_identical_frozen_repository_state": true,
+    "use_identical_capsule_for_luna_and_spark": true,
+    "include_parent_packet_construction": true,
+    "do_not_emit_pass_or_fail_until_records_complete": true,
     "status": "pending"
   }
 }

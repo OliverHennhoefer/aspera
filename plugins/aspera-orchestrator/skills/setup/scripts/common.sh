@@ -4,26 +4,41 @@
 set -euo pipefail
 
 ASPERA_PLUGIN_NAME='aspera-orchestrator'
-ASPERA_PLUGIN_VERSION='0.3.0'
-ASPERA_STATE_SCHEMA='3'
+ASPERA_PLUGIN_VERSION='0.4.0'
+ASPERA_STATE_SCHEMA='4'
 ASPERA_POLICY_MARKER_START='<!-- aspera-orchestrator:policy:start -->'
 ASPERA_POLICY_MARKER_END='<!-- aspera-orchestrator:policy:end -->'
 ASPERA_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ASPERA_POLICY_SRC="${ASPERA_SCRIPT_DIR}/../../orchestrate/references/policy.md"
+ASPERA_PROTOCOL_SRC="${ASPERA_SCRIPT_DIR}/../../orchestrate/references/protocol.md"
 ASPERA_SETUP_ASSETS_DIR="${ASPERA_SCRIPT_DIR}/../assets"
 ASPERA_ASSETS_DIR="${ASPERA_SETUP_ASSETS_DIR}/profiles"
 ASPERA_GUARD_SRC="${ASPERA_SETUP_ASSETS_DIR}/worker_guard.py"
 ASPERA_STATE_FILE_REL='.codex/aspera-orchestrator/state.json'
+ASPERA_PROTOCOL_FILE_REL='.codex/aspera-orchestrator/protocol.md'
 ASPERA_STATE_BACKUP_DIR_REL='.codex/aspera-orchestrator/backups'
 ASPERA_AGENTS_FILE_REL='AGENTS.md'
-ASPERA_MANAGED_FILES=(
+ASPERA_COMMON_MANAGED_FILES=(
   '.codex/agents/aspera-explorer.toml'
-  '.codex/agents/aspera-worker.toml'
-  '.codex/agents/aspera-verifier.toml'
+  '.codex/agents/aspera-luna-worker.toml'
   '.codex/agents/aspera-researcher.toml'
   '.codex/agents/aspera-reviewer.toml'
   '.codex/aspera-orchestrator/worker_guard.py'
+  '.codex/aspera-orchestrator/protocol.md'
 )
+ASPERA_ADAPTIVE_MANAGED_FILES=(
+  '.codex/agents/aspera-spark-worker.toml'
+)
+ASPERA_LEGACY_MANAGED_FILES=(
+  '.codex/agents/aspera-worker.toml'
+  '.codex/agents/aspera-verifier.toml'
+)
+ASPERA_ALL_MANAGED_FILES=(
+  "${ASPERA_COMMON_MANAGED_FILES[@]}"
+  "${ASPERA_ADAPTIVE_MANAGED_FILES[@]}"
+  "${ASPERA_LEGACY_MANAGED_FILES[@]}"
+)
+ASPERA_MANAGED_FILES=("${ASPERA_COMMON_MANAGED_FILES[@]}")
 
 aspera_err() {
   printf 'ERROR: %s\n' "$*" >&2
@@ -55,8 +70,16 @@ aspera_normalize_target() {
 
 aspera_validate_profile() {
   case "$1" in
-    spark|luna) ;;
-    *) aspera_err "invalid profile '$1' (expected spark or luna)" ;;
+    adaptive|luna) ;;
+    *) aspera_err "invalid profile '$1' (expected adaptive or luna; spark is a deprecated install alias)" ;;
+  esac
+}
+
+aspera_normalize_profile() {
+  case "$1" in
+    spark) printf 'adaptive\n' ;;
+    adaptive|luna) printf '%s\n' "$1" ;;
+    *) aspera_err "invalid profile '$1' (expected adaptive, luna, or deprecated alias spark)" ;;
   esac
 }
 
@@ -81,7 +104,7 @@ aspera_check_managed_ancestry() {
   done
   aspera_check_path_not_symlink "$root/$ASPERA_STATE_FILE_REL"
   aspera_check_path_not_symlink "$root/$ASPERA_AGENTS_FILE_REL"
-  for rel in "${ASPERA_MANAGED_FILES[@]}"; do
+  for rel in "${ASPERA_ALL_MANAGED_FILES[@]}"; do
     aspera_check_path_not_symlink "$root/$rel"
   done
 }
@@ -118,7 +141,7 @@ aspera_capture_destination_snapshot() {
   local output="$2"
   local rel
   : > "$output"
-  for rel in "${ASPERA_MANAGED_FILES[@]}" "$ASPERA_STATE_FILE_REL" "$ASPERA_AGENTS_FILE_REL"; do
+  for rel in "${ASPERA_ALL_MANAGED_FILES[@]}" "$ASPERA_STATE_FILE_REL" "$ASPERA_AGENTS_FILE_REL"; do
     printf '%s\t%s\n' "$rel" "$(aspera_entry_fingerprint "$root/$rel")" >> "$output"
   done
 }
@@ -161,26 +184,39 @@ except Exception:
 if not isinstance(data, dict) or data.get('plugin') != 'aspera-orchestrator':
     raise SystemExit(1)
 schema = data.get('schema_version')
-versions = {1: '0.1.0', 2: '0.2.0', 3: '0.3.0'}
+versions = {1: '0.1.0', 2: '0.2.0', 3: '0.3.0', 4: '0.4.0'}
 if schema not in versions or data.get('plugin_version') != versions[schema]:
     raise SystemExit(1)
 profile = data.get('profile')
-if profile not in {'spark', 'luna'}:
+if profile not in ({'spark', 'luna'} if schema < 4 else {'adaptive', 'luna'}):
     raise SystemExit(1)
 
-role_files = {
+legacy_role_files = {
     '.codex/agents/aspera-explorer.toml',
     '.codex/agents/aspera-worker.toml',
     '.codex/agents/aspera-verifier.toml',
     '.codex/agents/aspera-researcher.toml',
     '.codex/agents/aspera-reviewer.toml',
 }
+current_role_files = {
+    '.codex/agents/aspera-explorer.toml',
+    '.codex/agents/aspera-luna-worker.toml',
+    '.codex/agents/aspera-researcher.toml',
+    '.codex/agents/aspera-reviewer.toml',
+    '.codex/aspera-orchestrator/worker_guard.py',
+    '.codex/aspera-orchestrator/protocol.md',
+}
+if profile == 'adaptive':
+    current_role_files.add('.codex/agents/aspera-spark-worker.toml')
 managed = data.get('managed_files')
 if not isinstance(managed, dict):
     raise SystemExit(1)
-expected_managed = set(role_files)
-if schema >= 2:
-    expected_managed.add('.codex/aspera-orchestrator/worker_guard.py')
+if schema < 4:
+    expected_managed = set(legacy_role_files)
+    if schema >= 2:
+        expected_managed.add('.codex/aspera-orchestrator/worker_guard.py')
+else:
+    expected_managed = current_role_files
 if set(managed) != expected_managed:
     raise SystemExit(1)
 if any(not isinstance(value, str) or re.fullmatch(r'[0-9a-f]{64}', value) is None for value in managed.values()):
@@ -221,7 +257,7 @@ if schema == 2:
     elif guard.get('profile') != '' or guard.get('verified_at') != '':
         raise SystemExit(1)
 
-if schema == 3:
+if schema in {3, 4}:
     expected_keys = {
         'schema_version', 'plugin', 'plugin_version', 'profile', 'managed_files',
         'guard_hash', 'policy_installed', 'policy_hash',
@@ -278,24 +314,26 @@ PY
 asp_set_profile_contract() {
   local profile="$1"
   aspera_validate_profile "$profile"
-  ASPERA_MODEL_PRIMARY='gpt-5.6-luna'
-  ASPERA_EFFORT_PRIMARY='max'
+  ASPERA_MODEL_LUNA='gpt-5.6-luna'
+  ASPERA_EFFORT_LUNA='max'
+  ASPERA_MODEL_SPARK='gpt-5.3-codex-spark'
+  ASPERA_EFFORT_SPARK='xhigh'
   ASPERA_MODEL_RESEARCHER='gpt-5.6-luna'
   ASPERA_EFFORT_RESEARCHER='max'
   ASPERA_MODEL_REVIEWER='gpt-5.6-terra'
   ASPERA_EFFORT_REVIEWER='high'
-  if [ "$profile" = 'spark' ]; then
-    ASPERA_MODEL_PRIMARY='gpt-5.3-codex-spark'
-    ASPERA_EFFORT_PRIMARY='xhigh'
+  ASPERA_MANAGED_FILES=("${ASPERA_COMMON_MANAGED_FILES[@]}")
+  if [ "$profile" = 'adaptive' ]; then
+    ASPERA_MANAGED_FILES+=("${ASPERA_ADAPTIVE_MANAGED_FILES[@]}")
   fi
 }
 
 asp_profile_asset_path() {
-  local profile="$1"
   local role="$2"
   case "$role" in
-    explorer|worker|verifier) printf '%s/%s/%s.toml\n' "$ASPERA_ASSETS_DIR" "$profile" "$role" ;;
-    researcher|reviewer) printf '%s/shared/%s.toml\n' "$ASPERA_ASSETS_DIR" "$role" ;;
+    explorer|researcher|reviewer) printf '%s/shared/%s.toml\n' "$ASPERA_ASSETS_DIR" "$role" ;;
+    luna-worker) printf '%s/shared/luna-worker.toml\n' "$ASPERA_ASSETS_DIR" ;;
+    spark-worker) printf '%s/adaptive/spark-worker.toml\n' "$ASPERA_ASSETS_DIR" ;;
     *) aspera_err "invalid role '$role'" ;;
   esac
 }
@@ -317,14 +355,23 @@ import tomllib
 
 path, profile, role, expected_model = sys.argv[1:5]
 data = tomllib.loads(pathlib.Path(path).read_text(encoding='utf-8'))
-expected_name = f'aspera_{role}'
-expected_sandbox = 'workspace-write' if role in {'worker', 'verifier'} else 'read-only'
+expected_names = {
+    'explorer': 'aspera_explorer',
+    'luna-worker': 'aspera_luna_worker',
+    'spark-worker': 'aspera_spark_worker',
+    'researcher': 'aspera_researcher',
+    'reviewer': 'aspera_reviewer',
+}
+expected_name = expected_names[role]
+expected_sandbox = 'workspace-write' if role in {'luna-worker', 'spark-worker'} else 'read-only'
 if role == 'researcher':
     expected_effort = 'max'
 elif role == 'reviewer':
     expected_effort = 'high'
+elif role == 'spark-worker':
+    expected_effort = 'xhigh'
 else:
-    expected_effort = 'xhigh' if profile == 'spark' else 'max'
+    expected_effort = 'max'
 if data.get('name') != expected_name or data.get('model') != expected_model:
     raise SystemExit(1)
 if data.get('sandbox_mode') != expected_sandbox or data.get('model_reasoning_effort') != expected_effort:
@@ -343,7 +390,7 @@ import pathlib
 import sys
 path = pathlib.Path(sys.argv[1])
 text = path.read_text(encoding='utf-8')
-required = ('PACKET_VERSION = "2"', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PreCompact', 'Stop')
+required = ('PACKET_VERSION = "3"', 'WORKER_MODEL_MISMATCH', 'UNTRUTHFUL_CHANGED_FILES', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PreCompact', 'Stop')
 if any(term not in text for term in required):
     raise SystemExit(1)
 compile(text, str(path), 'exec')
@@ -396,6 +443,14 @@ import sys
 block = pathlib.Path(sys.argv[1]).read_text(encoding='utf-8').strip('\n')
 print(hashlib.sha256(block.encode()).hexdigest())
 PY
+}
+
+asp_validate_policy_assets() {
+  [ -f "$ASPERA_POLICY_SRC" ] && [ ! -L "$ASPERA_POLICY_SRC" ] || aspera_err "policy source is missing or unsafe: $ASPERA_POLICY_SRC"
+  [ -f "$ASPERA_PROTOCOL_SRC" ] && [ ! -L "$ASPERA_PROTOCOL_SRC" ] || aspera_err "protocol source is missing or unsafe: $ASPERA_PROTOCOL_SRC"
+  local policy_bytes
+  policy_bytes="$(wc -c < "$ASPERA_POLICY_SRC" | tr -d ' ')"
+  [ "$policy_bytes" -le 2048 ] || aspera_err "managed routing policy exceeds 2048 bytes: $policy_bytes"
 }
 
 asp_render_policy() {
@@ -498,11 +553,19 @@ asp_verify_installation() {
     current="$(aspera_hash_file "$root/$rel")"
     [ "$recorded" = "$current" ] || return 1
   done < <(asp_state_managed_files "$state_file")
+  for rel in "${ASPERA_ALL_MANAGED_FILES[@]}"; do
+    recorded="$(asp_state_get_hash "$state_file" "$rel")"
+    if [ -z "$recorded" ] && { [ -e "$root/$rel" ] || [ -L "$root/$rel" ]; }; then
+      return 1
+    fi
+  done
   [ "$(asp_state_get "$state_file" guard_hash)" = "$(asp_state_get_hash "$state_file" '.codex/aspera-orchestrator/worker_guard.py')" ] || return 1
   if [ "$(asp_state_get "$state_file" policy_installed)" = '1' ]; then
     policy_scan="$(asp_policy_scan "$root/$ASPERA_AGENTS_FILE_REL")"
     [ "$policy_scan" = 'ok' ] || return 1
     policy_hash="$(asp_policy_hash "$root/$ASPERA_AGENTS_FILE_REL")"
     [ "$policy_hash" = "$(asp_state_get "$state_file" policy_hash)" ] || return 1
+  else
+    [ "$(asp_policy_scan "$root/$ASPERA_AGENTS_FILE_REL")" = 'missing' ] || return 1
   fi
 }

@@ -1,7 +1,7 @@
 {
   "name": "aspera-orchestrator",
-  "version": "0.3.0",
-  "description": "Native Codex orchestrator for deterministic planner-worker-verifier execution.",
+  "version": "0.4.0",
+  "description": "Luna-first Codex orchestration with a conditional bounded Spark lane.",
   "author": {
     "name": "Oliver Hennhöfer",
     "url": "https://github.com/OliverHennhoefer/aspera"
@@ -19,8 +19,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Aspera Orchestrator",
-    "shortDescription": "Bounded Codex orchestration",
-    "longDescription": "Coordinate bounded implementation packets through explicit role routing, deterministic verification, and policy-driven execution.",
+    "shortDescription": "Quota-efficient Luna-first orchestration",
+    "longDescription": "Route bounded implementation to Luna Max, with Spark used only for naturally mechanical packets that pass strict value and context gates.",
     "developerName": "Oliver Hennhöfer",
     "category": "Developer Tools",
     "capabilities": [
@@ -30,9 +30,9 @@
     ],
     "websiteURL": "https://github.com/OliverHennhoefer/aspera",
     "defaultPrompt": [
-      "Start a scoped coding task with $orchestrate.",
-      "Use the installed project roles directly.",
-      "Run verification and report results."
+      "Start a bounded coding task with $orchestrate.",
+      "Use Luna Max as the default worker.",
+      "Select Spark only when the unchanged capsule passes its strict gate."
     ]
   }
 }

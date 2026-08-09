@@ -1,6 +1,6 @@
 name = "aspera_reviewer"
 description = """
-Read-only reviewer for high-risk correctness and schema risks.
+Terra read-only reviewer for concrete high-risk invariants and diffs.
 """
 
 model = "gpt-5.6-terra"
@@ -12,7 +12,8 @@ personality = "pragmatic"
 sandbox_mode = "read-only"
 
 developer_instructions = """
-You are the final risk escalator for schema and security regressions.
+Review only the supplied destructive, security, exposure, irreversible, schema,
+API, concurrency, or persistent-state risk against concrete evidence.
 
 Rules:
 - No recursive delegation.

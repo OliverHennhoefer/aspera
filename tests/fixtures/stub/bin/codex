@@ -1,6 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+STATE_DIR="${ASPERA_STUB_STATE_DIR:-}"
+MARKETPLACE_STATE="${STATE_DIR:+$STATE_DIR/marketplace-root}"
+PLUGIN_STATE="${STATE_DIR:+$STATE_DIR/plugin.json}"
+[ -z "$STATE_DIR" ] || mkdir -p "$STATE_DIR"
+
+marketplace_root() {
+  if [ -n "$MARKETPLACE_STATE" ] && [ -f "$MARKETPLACE_STATE" ]; then
+    sed -n '1p' "$MARKETPLACE_STATE"
+  else
+    printf '%s\n' "${ASPERA_STUB_MARKETPLACE_ROOT:-}"
+  fi
+}
+
 if [[ -n "${ASPERA_STUB_COMMAND_LOG:-}" ]]; then
   printf '%s\n' "$*" >> "${ASPERA_STUB_COMMAND_LOG}"
 fi
@@ -11,7 +24,7 @@ if [[ "${1:-}" == "--version" ]]; then
 fi
 
 if [[ "${1:-}" == "plugin" && "${2:-}" == "marketplace" && "${3:-}" == "list" && "${4:-}" == "--json" ]]; then
-  python3 - "${ASPERA_STUB_MARKETPLACE_ROOT:-}" <<'PY'
+  python3 - "$(marketplace_root)" <<'PY'
 import json
 import sys
 root = sys.argv[1]
@@ -22,11 +35,66 @@ PY
 fi
 
 if [[ "${1:-}" == "plugin" && "${2:-}" == "marketplace" && "${3:-}" == "add" ]]; then
-  exit "${ASPERA_STUB_PLUGIN_STATUS:-0}"
+  status="${ASPERA_STUB_MARKETPLACE_ADD_STATUS:-${ASPERA_STUB_PLUGIN_STATUS:-0}}"
+  [ "$status" -eq 0 ] || exit "$status"
+  [ -z "$MARKETPLACE_STATE" ] || printf '%s\n' "${4:-}" > "$MARKETPLACE_STATE"
+  printf '{"marketplace":"aspera","added":true}\n'
+  exit 0
+fi
+
+if [[ "${1:-}" == "plugin" && "${2:-}" == "marketplace" && "${3:-}" == "remove" && "${4:-}" == "aspera" ]]; then
+  status="${ASPERA_STUB_MARKETPLACE_REMOVE_STATUS:-0}"
+  [ "$status" -eq 0 ] || exit "$status"
+  [ -z "$MARKETPLACE_STATE" ] || rm -f "$MARKETPLACE_STATE"
+  printf '{"marketplace":"aspera","removed":true}\n'
+  exit 0
+fi
+
+if [[ "${1:-}" == "plugin" && "${2:-}" == "list" && "${3:-}" == "--json" ]]; then
+  status="${ASPERA_STUB_PLUGIN_LIST_STATUS:-0}"
+  [ "$status" -eq 0 ] || exit "$status"
+  python3 - "$PLUGIN_STATE" <<'PY'
+import json
+import pathlib
+import sys
+path = pathlib.Path(sys.argv[1]) if sys.argv[1] else None
+installed = [] if path is None or not path.is_file() else [json.loads(path.read_text(encoding='utf-8'))]
+print(json.dumps({'installed': installed, 'available': []}))
+PY
+  exit 0
 fi
 
 if [[ "${1:-}" == "plugin" && "${2:-}" == "add" && "${3:-}" == "aspera-orchestrator@aspera" ]]; then
-  exit "${ASPERA_STUB_PLUGIN_STATUS:-0}"
+  status="${ASPERA_STUB_PLUGIN_ADD_STATUS:-${ASPERA_STUB_PLUGIN_STATUS:-0}}"
+  [ "$status" -eq 0 ] || exit "$status"
+  python3 - "$PLUGIN_STATE" "$(marketplace_root)" "${ASPERA_STUB_PLUGIN_ADD_VERSION:-0.4.0}" <<'PY'
+import json
+import pathlib
+import sys
+path = pathlib.Path(sys.argv[1])
+root, version = sys.argv[2:4]
+payload = {
+    'pluginId': 'aspera-orchestrator@aspera',
+    'name': 'aspera-orchestrator',
+    'marketplaceName': 'aspera',
+    'version': version,
+    'installed': True,
+    'enabled': True,
+    'source': {'source': 'local', 'path': f'{root}/plugins/aspera-orchestrator'},
+    'marketplaceSource': {'sourceType': 'local', 'source': root},
+}
+path.write_text(json.dumps(payload), encoding='utf-8')
+print(json.dumps({'pluginId': payload['pluginId'], 'version': version, 'installed': True}))
+PY
+  exit 0
+fi
+
+if [[ "${1:-}" == "plugin" && "${2:-}" == "remove" && "${3:-}" == "aspera-orchestrator@aspera" ]]; then
+  status="${ASPERA_STUB_PLUGIN_REMOVE_STATUS:-0}"
+  [ "$status" -eq 0 ] || exit "$status"
+  [ -z "$PLUGIN_STATE" ] || rm -f "$PLUGIN_STATE"
+  printf '{"pluginId":"aspera-orchestrator@aspera","removed":true}\n'
+  exit 0
 fi
 
 if [[ "${1:-}" == "debug" && "${2:-}" == "models" ]]; then

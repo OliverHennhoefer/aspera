@@ -23,3 +23,12 @@ Do not derive policy from `.codex/config.toml`.
 - No public Direct/Express/Standard modes, recursive delegation, or silent model substitution.
 - Quality gates quota savings; failed Spark economics remove or disable the lane.
 - Managed installation, migration, drift handling, backup, and uninstall remain transactional and recoverable.
+
+## Installation contract
+
+- The checkout root `./aspera install --workspace <repository>` command is the only normal install and update path; success requires only a fresh Codex session afterward.
+- Preserve the installed profile and policy when their flags are omitted. Profile and policy changes require explicit options, and supported legacy state migrates automatically.
+- Classify every known current and legacy destination before external mutation. Refuse unsafe paths and unmanaged changes unless `--force` explicitly approves backup and complete reconciliation.
+- Stage the desired project state, recheck destinations for concurrent changes, commit the receipt last, and verify desired hashes plus absence of obsolete managed paths before returning success.
+- Refresh and verify the plugin only through supported Codex plugin commands. Never edit Codex cache or configuration files directly.
+- Installation and diagnosis never run doctor automatically, query models, start nested Codex, spawn agents, run runtime smoke, or persist runtime readiness.

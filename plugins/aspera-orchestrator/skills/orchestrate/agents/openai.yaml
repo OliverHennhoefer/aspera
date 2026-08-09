@@ -1,6 +1,6 @@
 interface:
   display_name: "Orchestrate"
-  short_description: "Apply deterministic planner-worker-verifier packets"
-  default_prompt: "Apply the orchestrator to your packet with $orchestrate."
+  short_description: "Route bounded implementation to Luna or conditional Spark"
+  default_prompt: "Use $orchestrate for Luna-first implementation with Spark only when its strict gate already holds."
 policy:
   allow_implicit_invocation: false
