@@ -45,7 +45,9 @@ if [ ! -e "$state_file" ] && [ ! -L "$state_file" ]; then
 fi
 
 aspera_check_managed_ancestry "$ASPERA_TARGET"
-[ -f "$state_file" ] && [ ! -L "$state_file" ] || aspera_err "state path is unsafe: $state_file"
+if [ ! -f "$state_file" ] || [ -L "$state_file" ]; then
+  aspera_err "state path is unsafe: $state_file"
+fi
 asp_state_validate_supported "$state_file" || aspera_err "unsupported or corrupt Aspera state: $state_file"
 
 STATE_POLICY="$(asp_state_get "$state_file" policy_installed)"

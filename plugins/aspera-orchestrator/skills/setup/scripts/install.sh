@@ -75,7 +75,9 @@ STATE_SCHEMA=''
 STATE_PROFILE=''
 STATE_POLICY=0
 if [ -e "$asp_state_file" ] || [ -L "$asp_state_file" ]; then
-  [ -f "$asp_state_file" ] && [ ! -L "$asp_state_file" ] || aspera_err "state path is unsafe: $asp_state_file"
+  if [ ! -f "$asp_state_file" ] || [ -L "$asp_state_file" ]; then
+    aspera_err "state path is unsafe: $asp_state_file"
+  fi
   asp_state_validate_supported "$asp_state_file" || aspera_err "unsupported or corrupt Aspera state: $asp_state_file"
   HAS_STATE=1
   STATE_SCHEMA="$(asp_state_schema "$asp_state_file")"
@@ -106,7 +108,9 @@ esac
 POLICY_SCAN="$(asp_policy_scan "$ASPERA_POLICY_FILE")"
 [ "$POLICY_SCAN" != 'invalid' ] || aspera_err "policy markers are invalid in $ASPERA_POLICY_FILE"
 if [ "$DESIRED_POLICY" -eq 1 ]; then
-  [ -f "$ASPERA_POLICY_SRC" ] && [ ! -L "$ASPERA_POLICY_SRC" ] || aspera_err "policy source is missing or unsafe: $ASPERA_POLICY_SRC"
+  if [ ! -f "$ASPERA_POLICY_SRC" ] || [ -L "$ASPERA_POLICY_SRC" ]; then
+    aspera_err "policy source is missing or unsafe: $ASPERA_POLICY_SRC"
+  fi
 fi
 
 EXPLORER_SRC="$(asp_profile_asset_path "$PROFILE" explorer)"
@@ -235,7 +239,9 @@ trap cleanup_install EXIT INT TERM
 for rel in "${ASPERA_MANAGED_FILES[@]}" "$ASPERA_AGENTS_FILE_REL" "$ASPERA_STATE_FILE_REL"; do
   printf '%s\n' "$rel" >> "$STAGE_ROOT/rollback-paths"
   if [ -e "$ASPERA_TARGET/$rel" ]; then
-    [ -f "$ASPERA_TARGET/$rel" ] && [ ! -L "$ASPERA_TARGET/$rel" ] || aspera_err "managed destination is unsafe: $ASPERA_TARGET/$rel"
+    if [ ! -f "$ASPERA_TARGET/$rel" ] || [ -L "$ASPERA_TARGET/$rel" ]; then
+      aspera_err "managed destination is unsafe: $ASPERA_TARGET/$rel"
+    fi
     mkdir -p "$(dirname "$STAGE_ROOT/rollback/$rel")"
     cp -p "$ASPERA_TARGET/$rel" "$STAGE_ROOT/rollback/$rel"
   fi

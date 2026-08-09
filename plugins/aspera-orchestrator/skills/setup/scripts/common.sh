@@ -306,7 +306,9 @@ asp_validate_asset_file() {
   local expected_model="$3"
   local path
   path="$(asp_profile_asset_path "$profile" "$role")"
-  [ -f "$path" ] && [ ! -L "$path" ] || aspera_err "missing or unsafe profile asset: $path"
+  if [ ! -f "$path" ] || [ -L "$path" ]; then
+    aspera_err "missing or unsafe profile asset: $path"
+  fi
   python3 - "$path" "$profile" "$role" "$expected_model" <<'PY'
 import hashlib
 import pathlib
@@ -332,7 +334,9 @@ PY
 }
 
 asp_validate_guard_asset() {
-  [ -f "$ASPERA_GUARD_SRC" ] && [ ! -L "$ASPERA_GUARD_SRC" ] || aspera_err "missing or unsafe worker guard asset: $ASPERA_GUARD_SRC"
+  if [ ! -f "$ASPERA_GUARD_SRC" ] || [ -L "$ASPERA_GUARD_SRC" ]; then
+    aspera_err "missing or unsafe worker guard asset: $ASPERA_GUARD_SRC"
+  fi
   python3 - "$ASPERA_GUARD_SRC" <<'PY'
 import hashlib
 import pathlib
@@ -456,7 +460,9 @@ aspera_prepare_backup_root() {
   local backup_root physical_root physical_backup
   backup_root="$(aspera_backup_root "$root")"
   aspera_check_managed_ancestry "$root"
-  [ ! -e "$backup_root" ] && [ ! -L "$backup_root" ] || aspera_err "backup path already exists: $backup_root"
+  if [ -e "$backup_root" ] || [ -L "$backup_root" ]; then
+    aspera_err "backup path already exists: $backup_root"
+  fi
   umask 077
   mkdir -p "$backup_root"
   aspera_check_managed_ancestry "$root"

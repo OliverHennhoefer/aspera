@@ -45,7 +45,9 @@ done
 ASPERA_TARGET="$(aspera_normalize_target "$TARGET")"
 state_file="$(aspera_state_file "$ASPERA_TARGET")"
 aspera_check_managed_ancestry "$ASPERA_TARGET"
-[ -f "$state_file" ] && [ ! -L "$state_file" ] || aspera_err "state not found or unsafe: $state_file"
+if [ ! -f "$state_file" ] || [ -L "$state_file" ]; then
+  aspera_err "state not found or unsafe: $state_file"
+fi
 asp_state_validate_supported "$state_file" || aspera_err "unsupported or corrupt Aspera state: $state_file"
 
 schema="$(asp_state_schema "$state_file")"
