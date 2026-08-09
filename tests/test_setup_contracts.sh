@@ -9,8 +9,6 @@ trap '[ "$OWN_TMP" -eq 0 ] || rm -rf "$TMP_ROOT"' EXIT
 
 CLI="$ROOT/aspera"
 INSTALL="$ROOT/plugins/aspera-orchestrator/skills/setup/scripts/install.sh"
-DIAGNOSE="$ROOT/plugins/aspera-orchestrator/skills/setup/scripts/doctor.sh"
-UNINSTALL="$ROOT/plugins/aspera-orchestrator/skills/setup/scripts/uninstall.sh"
 ASSETS="$ROOT/plugins/aspera-orchestrator/skills/setup/assets"
 STUB="${ASPERA_CODEX_BIN:-$ROOT/tests/fixtures/stub/bin/codex}"
 STATE_REL='.codex/aspera-orchestrator/state.json'
@@ -39,10 +37,21 @@ assert_eq() {
   if [ "$actual" = "$expected" ]; then pass "$message"; else fail "$message (expected=$expected actual=$actual)"; fi
 }
 
-assert_file() { [ -f "$1" ] && pass "$2" || fail "$2"; }
-assert_absent() { [ ! -e "$1" ] && [ ! -L "$1" ] && pass "$2" || fail "$2"; }
-assert_contains() { grep -Fq -- "$2" "$1" && pass "$3" || fail "$3"; }
-assert_not_contains() { ! grep -Fq -- "$2" "$1" && pass "$3" || fail "$3"; }
+assert_file() {
+  if [ -f "$1" ]; then pass "$2"; else fail "$2"; fi
+}
+
+assert_absent() {
+  if [ ! -e "$1" ] && [ ! -L "$1" ]; then pass "$2"; else fail "$2"; fi
+}
+
+assert_contains() {
+  if grep -Fq -- "$2" "$1"; then pass "$3"; else fail "$3"; fi
+}
+
+assert_not_contains() {
+  if ! grep -Fq -- "$2" "$1"; then pass "$3"; else fail "$3"; fi
+}
 
 capture() {
   local output="$1"
@@ -203,7 +212,8 @@ test_root_install() {
   local target="$TMP_ROOT/fresh project" output="$TMP_ROOT/fresh.out" rc
   mkdir -p "$target/.codex"
   printf 'keep = true\n' > "$target/.codex/config.toml"
-  local config_hash="$(hash_file "$target/.codex/config.toml")"
+  local config_hash
+  config_hash="$(hash_file "$target/.codex/config.toml")"
   : > "$COMMAND_LOG"
   rc="$(capture "$output" bash "$CLI" install --workspace "$target")"
   assert_eq "$rc" '0' 'one-command fresh install succeeds'
