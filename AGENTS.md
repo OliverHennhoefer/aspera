@@ -1,139 +1,25 @@
-# Aspera Orchestrator Policy (clean public contract)
+# Aspera repository policy
 
 ## Source of truth
 
-- This file (`AGENTS.md`), parent task packet, and current request.
-- `plugins/aspera-orchestrator/skills/orchestrate/references/policy.md`.
-- `plugins/aspera-orchestrator/skills/setup/assets/*` for role defaults.
-- `plugins/aspera-orchestrator/skills/setup/scripts/*` for setup/doctor/uninstall command behavior.
+- This file, the current request, and any parent task packet.
+- `plugins/aspera-orchestrator/skills/orchestrate/references/policy.md` for the compact downstream router.
+- `plugins/aspera-orchestrator/skills/orchestrate/references/protocol.md` for downstream packet and lifecycle behavior.
+- `plugins/aspera-orchestrator/skills/setup/assets/*` and `scripts/*` for installed contracts.
 
 Do not derive policy from `.codex/config.toml`.
 
-## Operating model
+## Development rule
 
-- Parent is architecture owner and final authority.
-- Direct mode is parent-only.
-- No recursive delegation.
-- No silent fallback to unstated models or roles.
-- If contract ambiguity remains, stop with `BLOCKER OR REQUIRED DECISION`.
-- Shared-state edits are serialized.
+- Always implement Aspera itself parent-direct. Do not delegate implementation, verification, review, or exploration in this repository.
+- The downstream orchestrator is tested here but activates only after installation into another repository.
+- Preserve user changes and serialize shared-state edits.
 
-## Activation
+## Product invariants
 
-- Development of Aspera itself is always parent-direct. Do not delegate implementation in this repository.
-- The managed downstream policy is tested here but applies only after installation into another repository.
-- Do not apply Aspera orchestration to reviews, explanations, status requests, setup, doctor, installation, or uninstall work.
-
-## Worker lifecycle protocol
-
-- A clean worktree or quota change alone does not prove worker success or failure.
-- Before spawn, validate the complete worker packet with the managed worker guard.
-- Use the installed `aspera_worker` directly. If the role is not exposed in the current session, stop that lane with one actionable instruction to run `./aspera install --workspace <repository>` and start a new session; do not run setup, doctor, or a synthetic worker retry inside the task.
-- Spawn workers with the repository root as their working directory so the managed agent-scoped hook path resolves exactly.
-- The worker receives settled architecture and exact evidence anchors; it confirms them but does not rediscover architecture.
-- Permit at most four inspection calls without a successful owned edit or exact verification command.
-- Require the first successful owned-file edit within 90 seconds of packet acceptance. This is not a total task timeout.
-- Automatic compaction before the first edit, exhausted inspection budget, approval block, or missed first-edit deadline ends the worker turn.
-- Inspect the active thread, effective sandbox/approval state, working directory, and latest tool event before interruption.
-- Do not steer a pre-edit failed worker. Correct the packet or routing and use one fresh worker.
-- Parent intervention after interruption is a failed delegation and is reported as parent intervention.
-
-## Modes
-
-- Direct: parent-only, no delegated roles.
-- Express: one `aspera_worker` only for an implementation-ready packet with no escalation trigger; add `aspera_verifier` for behavioral or multi-file work. Parent is final rerun authority.
-- Standard: required for every escalation trigger; use up to three parallel `aspera_explorer` readers, parent resolution, then serialized or disjoint `aspera_worker` edit batches with verification waves.
-
-## Roles
-
-- `aspera_explorer` (read-only investigation)
-- `aspera_worker` (bounded edits)
-- `aspera_verifier` (bounded validation and evidence)
-- `aspera_researcher` (docs/spec checks, evidence-first)
-- `aspera_reviewer` (risk gate, read-only)
-
-## Exact packet schemas
-
-Explorer:
-
-- `PACKET_VERSION: 2`
-- `TASK_ID`
-- `QUESTION`
-- `READ_ONLY_CONTEXT`
-- `CONSTRAINTS`
-- `EVIDENCE_REQUIRED`
-- `STOP_CONDITIONS`
-
-Worker (full):
-
-- `PACKET_VERSION: 2`
-- `TASK_ID`
-- `OBJECTIVE`
-- `READY_STATE: IMPLEMENTATION_READY`
-- `OWNED_PATHS`
-- `EVIDENCE_ANCHORS`
-- `INTERFACE_CONTRACTS`
-- `INVARIANTS`
-- `NON_GOALS`
-- `IMPLEMENTATION_STEPS`
-- `ACCEPTANCE_CRITERIA`
-- `VERIFICATION`
-- `STOP_CONDITIONS`
-- `HANDOFF_FORMAT`
-
-Verifier:
-
-- `TASK_ID`
-- `OWNED_PATHS`
-- `VERIFICATION`
-- `EXPECTED_RESULTS`
-- `CONSTRAINTS`
-- `HANDOFF_FORMAT`
-
-Reviewer:
-
-- `TASK_ID`
-- `RISK_SCOPE`
-- `READ_ONLY_CONTEXT`
-- `INVARIANTS`
-- `EVIDENCE_REQUIRED`
-- `HANDOFF_FORMAT`
-
-Researcher:
-
-- Explorer schema with documentation/spec `QUESTION`.
-
-## Read-only handoff format
-
-Explorer and researcher roles return:
-
-- `STATUS: done | blocked | failed`
-- `TASK_ID:`
-- `FINDINGS:`
-- `EVIDENCE_ANCHORS:`
-- `UNRESOLVED_DECISIONS:`
-- `RISKS:`
-- `BLOCKER OR REQUIRED DECISION:`
-
-The parent resolves every `UNRESOLVED_DECISIONS` entry before setting `READY_STATE: IMPLEMENTATION_READY`.
-
-## Escalation triggers
-
-- auth/secrets/data exposure
-- concurrency or persistent state changes
-- public API or schema changes
-- unclear invariants
-- repeated verification failures
-- unexpectedly broad scope
-
-## Canonical handoff format
-
-The value of every worker, verifier, or reviewer `HANDOFF_FORMAT` field is:
-
-- `STATUS: done | blocked | failed`
-- `TASK_ID:`
-- `CHANGED FILES:`
-- `VERIFICATION COMMANDS AND RESULTS:`
-- `ASSUMPTIONS:`
-- `REMAINING RISKS:`
-- `BLOCKER OR REQUIRED DECISION:`
+- Sol owns architecture, routing, and final acceptance.
+- Luna Max is the primary downstream implementation worker.
+- Spark is conditional, receives the unchanged Luna-ready capsule, and never causes extra planning or context construction.
+- No public Direct/Express/Standard modes, recursive delegation, or silent model substitution.
+- Quality gates quota savings; failed Spark economics remove or disable the lane.
+- Managed installation, migration, drift handling, backup, and uninstall remain transactional and recoverable.
