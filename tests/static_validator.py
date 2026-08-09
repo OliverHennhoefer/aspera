@@ -398,28 +398,48 @@ def _check_worker_runtime_contract(repo_root: Path, plugin_dir: Path, results: L
 
     doctor_path = plugin_dir / "skills" / "setup" / "scripts" / "doctor.sh"
     common_path = plugin_dir / "skills" / "setup" / "scripts" / "common.sh"
-    setup_skill_path = plugin_dir / "skills" / "setup" / "SKILL.md"
-    smoke_text = (_load_text(doctor_path) + _load_text(common_path) + _load_text(setup_skill_path)).lower()
-    smoke_terms = (
-        "--runtime-smoke explorer|worker",
-        "worker_success",
-        "model_catalog_failure",
-        "approval_blocked",
-        "spawn_failure",
-        "execution_failure",
-        "first_edit_deadline",
-        "smoke_harness_timeout",
-        "invalid_handoff",
-        "guard_armed",
-        "aspera-worker-smoke.txt",
-        "workspace-write",
-        "--ignore-user-config",
+    install_path = plugin_dir / "skills" / "setup" / "scripts" / "install.sh"
+    lifecycle_text = (_load_text(doctor_path) + _load_text(common_path) + _load_text(install_path)).lower()
+    forbidden_runtime = (
+        "--runtime-smoke",
+        "asp_run_smoke",
+        "aspera_guard_armed",
+        "codex exec",
+        "debug models",
     )
-    missing = [term for term in smoke_terms if term not in smoke_text]
-    if missing:
-        fail(results, str(common_path), f"worker smoke contract missing: {', '.join(missing)}")
+    present = [term for term in forbidden_runtime if term in lifecycle_text]
+    if present:
+        fail(results, str(common_path), f"task-time runtime ceremony remains: {', '.join(present)}")
     else:
-        ok(results, str(common_path), "isolated worker smoke and failure classes are complete")
+        ok(results, str(common_path), "install and diagnosis contain no runtime smoke or model probe")
+
+    install_terms = (
+        "schema_version': 3",
+        "asp_state_validate_supported",
+        "snapshot-before",
+        "snapshot-after",
+        "rollback_install",
+        "asp_verify_installation",
+    )
+    missing = [term for term in install_terms if term not in lifecycle_text]
+    if missing:
+        fail(results, str(install_path), f"reconcile transaction contract missing: {', '.join(missing)}")
+    else:
+        ok(results, str(install_path), "schema migration and transactional reconcile contract is complete")
+
+    root_cli = repo_root / "aspera"
+    if not root_cli.is_file():
+        fail(results, str(root_cli), "missing root lifecycle command")
+    else:
+        cli_text = _load_text(root_cli).lower()
+        cli_terms = ("install)", "diagnose)", "uninstall)", "plugin marketplace list --json", "plugin add")
+        missing = [term for term in cli_terms if term not in cli_text]
+        if missing:
+            fail(results, str(root_cli), f"root lifecycle command missing: {', '.join(missing)}")
+        else:
+            ok(results, str(root_cli), "root command owns plugin refresh and project lifecycle")
+        _check_shell_file(root_cli, results)
+        _check_shellcheck(root_cli, results)
 
     eval_path = repo_root / "tests" / "evals" / "manual-eval-spec.json"
     eval_data = _read_json(eval_path)
@@ -656,8 +676,8 @@ def _check_manifest_and_marketplace(plugin_dir: Path, repo_root: Path, results: 
     else:
         ok(results, str(manifest_path), "manifest name matches plugin folder")
 
-    if manifest.get("version") != "0.2.0":
-        fail(results, str(manifest_path), "manifest version must be 0.2.0")
+    if manifest.get("version") != "0.3.0":
+        fail(results, str(manifest_path), "manifest version must be 0.3.0")
 
     marketplace_path = repo_root / ".agents" / "plugins" / "marketplace.json"
     if not marketplace_path.is_file():

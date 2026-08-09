@@ -16,7 +16,8 @@
 
 - A clean worktree or quota change alone does not prove worker success or failure.
 - Validate every worker packet with `.codex/aspera-orchestrator/worker_guard.py --validate-packet --root <repository>` before spawn.
-- Require schema-2 state with `guard.verified: true` for the current profile and managed guard hash; otherwise stop and run the worker runtime smoke.
+- Use the exposed configured worker directly; the first real delegation is the runtime exercise.
+- If the expected role is absent, stop that lane with one actionable instruction to run `./aspera install --workspace <repository>` from the configured checkout and start a new session. Do not load setup, run doctor, spawn a synthetic worker, or retry the failed bootstrap inside the task.
 - Spawn the worker with the repository root as its working directory; a different working directory is a pre-spawn blocker because the agent-scoped guard path is root-relative.
 - Permit at most four inspection calls without a successful owned edit or exact verification command.
 - Require the first successful owned-file edit within 90 seconds of packet acceptance; there is no total task timeout while progress continues.

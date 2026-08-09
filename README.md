@@ -1,60 +1,43 @@
 # Aspera Orchestrator
 
-Aspera is an experimental Codex plugin. It delegates small, clearly defined tasks to less expensive models while keeping the main Sol agent responsible for planning and final acceptance.
+Aspera is an experimental Codex plugin for bounded planner-worker-verifier execution. The parent remains responsible for architecture, verification, and final acceptance.
 
-Version: `0.2.0` alpha. Packet v2 and state schema 2 are hard breaks; version 0.1 state is not upgraded. Cost and quality results are still pending; no savings claim is made yet.
+Version: `0.3.0` alpha. Packet v2 remains current. State schema 3 automatically migrates valid schema-1 and schema-2 installations.
 
 ## Requirements
 
-- Codex `0.147.0-alpha.6.5` or newer. Older versions are unsupported. Last tested: `0.147.0-alpha.6.5` on 2026-08-08.
+- A current Codex CLI or Codex IDE installation with plugins, custom agents, subagents, and hooks.
 - Bash 3.2 or newer and Python 3.11 or newer.
-- A ChatGPT account signed in to Codex:
-  - **Luna profile:** ChatGPT Plus, Pro, or another plan whose Codex model list includes Luna `max` and Terra `high`.
-  - **Spark profile:** ChatGPT Pro. Spark is a research preview with a separate usage limit and may be temporarily unavailable.
+- Access to the models selected by the chosen profile.
 
-Spark is not generally available through API-key access during the research preview. See [ChatGPT plans](https://chatgpt.com/pricing) and the [Spark announcement](https://openai.com/index/introducing-gpt-5-3-codex-spark/).
+Aspera does not query the authenticated model catalog during installation. Codex reports model or routing availability when a real task uses a configured role.
 
-Check which Codex your terminal uses:
+## Install or update
 
-```bash
-codex --version
-```
-
-Aspera checks the signed-in account's current model list before writing files. Missing models or reasoning levels stop setup; Aspera never substitutes another model or lowers effort.
-
-## Install the plugin
-
-Clone or download this repository. In a terminal, run:
+Clone or update this repository, then run one command from the Aspera checkout:
 
 ```bash
-codex plugin marketplace add <path-to-aspera>
-codex plugin add aspera-orchestrator@aspera
+./aspera install --workspace /absolute/path/to/project
 ```
 
-Then open the project where you want to use Aspera and start a **new Codex conversation**.
+The command:
 
-## Configure workflow in a project
+- adds or verifies the local Aspera marketplace and refreshes the plugin from this checkout;
+- installs the project role files, worker guard, managed `AGENTS.md` policy, and state receipt;
+- migrates valid Aspera 0.1 and 0.2 state;
+- refuses unmanaged conflicts, drift, and symlinked managed paths;
+- stages the complete target state, rechecks destinations, commits it, and verifies exact hashes;
+- preserves the installed profile and policy on updates.
 
-Choose one of these two flows:
+Fresh installs use the Spark profile and managed policy. Choose Luna explicitly:
 
-- **Profiles only:** install role files, leave `AGENTS.md` unchanged, and explicitly select Orchestrate for each implementation task.
-- **Managed policy:** install role files and the managed `AGENTS.md` block. The repository then uses Aspera for implementation work without attaching the skill to every task. Reviews, explanations, status requests, and setup operations keep their applicable workflows.
-
-Managed policy preserves existing `AGENTS.md` content and changes only the marked Aspera block. Adding the block to an existing file creates a backup. Malformed or duplicate markers stop setup instead of rewriting the file. Start a new Codex conversation after policy installation so Codex loads it.
-
-## Set up a project
-
-For the Spark profile, ask Codex:
-
-```text
-Use $aspera-orchestrator:setup to install the Spark profile in this repository, then run doctor with the worker runtime smoke.
+```bash
+./aspera install --workspace /absolute/path/to/project --profile luna
 ```
 
-For the Luna profile:
+Use `--no-policy` only when every task will attach `$aspera-orchestrator:orchestrate` explicitly. Use `--force` only after inspecting reported managed-file drift; Aspera creates a backup before replacing it.
 
-```text
-Use $aspera-orchestrator:setup to install the Luna profile in this repository, then run doctor with the worker runtime smoke.
-```
+After success, start a new Codex session so role and policy discovery use the installed files. There is no setup conversation, doctor command, runtime smoke, or other activation step.
 
 Setup creates:
 
@@ -68,126 +51,60 @@ Setup creates:
 .codex/aspera-orchestrator/state.json
 ```
 
-Successful activation ends with:
+These files may be committed for team use or ignored for a personal installation. Do not commit `.codex/aspera-orchestrator/backups/`.
 
-```text
-doctor: state and managed files are valid
-worker guard verification recorded
-doctor: ok
-```
+## Use
 
-These files may appear as untracked in Git. That is expected. Review and commit them if the whole team should use Aspera, or ignore them locally for a personal test. Do not commit `.codex/aspera-orchestrator/backups/`.
+With managed policy installed, ask for implementation work normally. Aspera uses the roles exposed when the session starts. The first real delegation is the runtime exercise; no synthetic worker is spawned first.
 
-The project `AGENTS.md` is unchanged by default. To install the optional managed policy block, ask:
+If an expected role is absent, Aspera stops that lane once and asks for a reinstall plus a new session. It does not run setup, retry delegation, or reinterpret a collaboration bootstrap error as an installation failure.
 
-```text
-Use $aspera-orchestrator:setup to install the Spark profile and the managed AGENTS.md policy, then run doctor with the worker runtime smoke.
-```
+Without managed policy, explicitly select **Aspera Orchestrator: Orchestrate** from `/skills` or `$` for the task.
 
-Aspera never creates, edits, or validates `.codex/config.toml`.
-
-Worker profiles load the managed project guard as an agent-scoped hook. The project must be trusted and Codex hooks must remain enabled. Run the worker runtime smoke before relying on delegated implementation.
-
-## Try it
-
-Without managed policy, open `/skills` or type `$`, select **Aspera Orchestrator: Orchestrate**, and give it a small implementation task with a clear test:
-
-```text
-Use $aspera-orchestrator:orchestrate in Express mode for this task.
-Report the selected role, model, effort, verification result, and delegation count.
-```
-
-Selecting the skill is the reliable explicit invocation path; merely pasting its name into a prompt may not attach it. With managed policy installed, ordinary implementation requests follow the policy directly.
-
-## Profiles
+### Profiles
 
 | Profile | Exploration, implementation, verification | Research | Risk review |
 |---|---|---|---|
 | Spark | Spark `xhigh` | Luna `max` | Terra `high` |
 | Luna | Luna `max` | Luna `max` | Terra `high` |
 
-Spark prioritizes speed and uses its separate preview allowance. Luna is the broadly available alternative for clear, repeatable work. Terra is reserved for declared correctness and risk checks.
+### Modes
 
-## Modes
+- **Direct:** parent-only, no delegation.
+- **Express:** one bounded worker, plus a verifier when needed.
+- **Standard:** independent exploration, resolved architecture, serialized or disjoint workers, and verification waves.
 
-- **Direct:** the parent handles a trivial task without delegation.
-- **Express:** one worker handles a bounded task; verification is added when needed.
-- **Standard:** up to three independent explorers, disjoint workers, verification after each wave, and Terra only for declared risk triggers.
+Workers receive packet v2 with exact owned paths, evidence anchors, settled interfaces, invariants, implementation steps, verification commands, stop conditions, and the canonical handoff. The managed hook is defense-in-depth for packet, ownership, progress, and handoff enforcement.
 
-The parent remains responsible for architecture, decisive checks, and final acceptance. Delegation is non-recursive and each path has one writer.
+## Optional lifecycle support
 
-Every worker receives packet v2 in this order:
-
-```text
-PACKET_VERSION: 2
-TASK_ID: <stable-id>
-OBJECTIVE: <observable outcome>
-READY_STATE: IMPLEMENTATION_READY
-OWNED_PATHS:
-- <exact repository-relative file>
-EVIDENCE_ANCHORS:
-- <existing path>::<exact symbol or text>
-INTERFACE_CONTRACTS: <settled interfaces>
-INVARIANTS: <properties that must hold>
-NON_GOALS: <excluded work>
-IMPLEMENTATION_STEPS:
-1. <path/symbol edit>
-2. <path/symbol edit>
-3. <verification and handoff>
-ACCEPTANCE_CRITERIA: <decisive result>
-VERIFICATION:
-- COMMAND: <exact command>
-  EXPECTED: <exact success evidence>
-STOP_CONDITIONS: <conditions requiring a blocked handoff>
-HANDOFF_FORMAT: <canonical implementation handoff>
-```
-
-Packet v1 is rejected. Explorer and researcher results use `FINDINGS`, `EVIDENCE_ANCHORS`, `UNRESOLVED_DECISIONS`, `RISKS`, and `BLOCKER OR REQUIRED DECISION`; the parent resolves every decision before marking a worker packet ready.
-
-## Check or remove setup
-
-Ask Codex:
-
-```text
-Use $aspera-orchestrator:setup to run doctor in this repository.
-```
-
-```text
-Use $aspera-orchestrator:setup to uninstall Aspera from this repository.
-```
-
-Uninstall removes only artifacts recorded in Aspera's state file. Drift is refused unless you explicitly approve `--force`; forced operations create a backup first.
-
-## Source fallback
-
-If marketplace installation is unavailable, run the bundled scripts from the Aspera checkout:
+Local diagnosis is read-only and never starts Codex or changes readiness:
 
 ```bash
-bash "<path-to-aspera>/plugins/aspera-orchestrator/skills/setup/scripts/install.sh" --profile spark "<path-to-project>"
-bash "<path-to-aspera>/plugins/aspera-orchestrator/skills/setup/scripts/doctor.sh" --profile spark "<path-to-project>"
-bash "<path-to-aspera>/plugins/aspera-orchestrator/skills/setup/scripts/uninstall.sh" "<path-to-project>"
+./aspera diagnose --workspace /absolute/path/to/project
 ```
 
-Use `--profile luna` for Luna. Add `--install-policy` only when you want the managed `AGENTS.md` block. Use `--dry-run` to preview setup or uninstall without changing files.
-
-If several Codex versions are installed, point setup at the supported binary:
+Uninstall removes only files recorded by a supported state receipt and retains a backup:
 
 ```bash
-ASPERA_CODEX_BIN="<path-to-codex>" bash "<path-to-aspera>/plugins/aspera-orchestrator/skills/setup/scripts/install.sh" --profile spark "<path-to-project>"
+./aspera uninstall --workspace /absolute/path/to/project
 ```
+
+Both commands support `--dry-run` where applicable. Forced drift handling requires `--force`.
 
 ## Troubleshooting
 
-- **Configuration fails before installation:** `codex --version` probably points to an older Codex. Update it or use the supported binary explicitly.
-- **Spark is unavailable:** confirm ChatGPT Pro access and try the Luna profile. A newer client alone does not grant Spark access.
-- **An updated plugin is not visible:** reinstall the plugin and start a new conversation.
-- **Drift detected:** review the changed managed files before using `--force`.
-- **Version 0.1 state found:** uninstall it with the version 0.1 scripts, then install 0.2. There is no state or packet compatibility path.
-- **Worker appears stalled:** inspect its thread, effective permissions, working directory, and latest tool event. Quota movement or a clean worktree alone does not prove success or failure.
-- **Runtime smoke:** `doctor.sh --runtime-smoke explorer TARGET` checks role discovery. `doctor.sh --runtime-smoke worker TARGET` runs paid parent and worker model activity, requires the guard-armed marker, and validates a deterministic edit in an isolated temporary workspace. The worker must edit within 90 seconds; the diagnostic process has a separate 300-second safety ceiling.
+- **Marketplace points elsewhere:** use the checkout already configured as marketplace `aspera`, or remove the conflicting marketplace deliberately before retrying.
+- **Role missing in a fresh session:** rerun the one install command and confirm it exits successfully.
+- **Drift detected:** inspect the named managed files before approving `--force`.
+- **Model unavailable during a real task:** choose a profile supported by the current account; Aspera never substitutes a model or reasoning level.
+- **Collaboration bootstrap failure:** treat it as a host/runtime failure. It does not invalidate the installed receipt.
 
-## Evaluation status
+## Development
 
-The hypothesis is that Aspera can approach Sol `high` correctness at lower cost. The fixed comparison records success, tests, tokens, credits, duration, delegation, retries, and parent intervention. Release targets include at least 9/10 bounded tasks passing, median cost no greater than 70% of Sol-only, and at least 40% lower parent-token usage on delegated tasks.
+```bash
+bash tests/run.sh
+git diff --check
+```
 
-Results are pending. The protocol is in [`tests/evals/manual-eval-spec.json`](tests/evals/manual-eval-spec.json).
+The optional authenticated runtime evaluation is a release activity and never changes project installation state. The evaluation protocol remains in [`tests/evals/manual-eval-spec.json`](tests/evals/manual-eval-spec.json).

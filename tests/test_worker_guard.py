@@ -235,7 +235,9 @@ BLOCKER OR REQUIRED DECISION:""",
     def test_stop_requires_canonical_handoff(self) -> None:
         self.arm()
         invalid = guard.handle_hook(self.event("Stop", last_assistant_message="done"), now=1001.0)
-        self.assertEqual(invalid["stopReason"], "INVALID_HANDOFF")
+        self.assertEqual(invalid["decision"], "block")
+        self.assertIn("INVALID_HANDOFF", invalid["reason"])
+        self.assertNotIn("continue", invalid)
         valid_message = """STATUS: blocked
 TASK_ID: TEST_TASK
 CHANGED FILES: None

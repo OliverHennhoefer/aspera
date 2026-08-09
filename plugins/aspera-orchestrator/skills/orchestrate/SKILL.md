@@ -15,7 +15,7 @@ can apply the same contract directly without loading this skill.
 ## Invocation
 
 - Use `/skills` or select `$aspera-orchestrator:orchestrate` for one task.
-- Treat setup/install/doctor/uninstall as non-orchestrate flows handled by the `setup` skill or parent.
+- Treat install/diagnose/uninstall as explicit terminal lifecycle commands, never as task-time orchestration steps.
 
 ## Operating modes
 
@@ -75,7 +75,8 @@ can apply the same contract directly without loading this skill.
 
 ## Worker execution guidance
 
-- Before any delegation, require schema-2 state with `guard.verified: true` for the current profile and guard hash. Otherwise stop and run setup doctor with `--runtime-smoke worker`.
+- Use the exposed configured role directly; the first real delegation is the runtime exercise.
+- If an expected role is absent, stop that lane with one actionable instruction to run `./aspera install --workspace <repository>` from the configured checkout and start a new session. Do not load setup, run doctor, spawn a synthetic worker, or retry the failed bootstrap inside the task.
 - Require the worker working directory to equal the repository root so the agent-scoped guard path resolves; otherwise stop before spawn.
 - Before spawning, validate the packet with `.codex/aspera-orchestrator/worker_guard.py --validate-packet --root <repository>` on stdin.
 - `OWNED_PATHS` contains exact repository-relative files only; no directories, globs, duplicates, overlaps, or traversal.

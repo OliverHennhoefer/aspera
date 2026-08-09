@@ -443,7 +443,7 @@ def _handle_stop(event: dict[str, Any]) -> dict[str, Any]:
     if not _valid_handoff(message, state["task_id"]):
         state["last_classification"] = "INVALID_HANDOFF"
         _write_state(path, state)
-        return _hook_stop("INVALID_HANDOFF", "return the canonical handoff with the packet TASK_ID")
+        return _hook_block("INVALID_HANDOFF", "return the canonical handoff with the packet TASK_ID")
     path.unlink(missing_ok=True)
     return {}
 

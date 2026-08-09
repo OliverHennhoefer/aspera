@@ -2,179 +2,65 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# The runtime-computed absolute path cannot be resolved by static analysis.
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/common.sh"
 
 TARGET="$(pwd)"
-PROFILE=""
-RUNTIME_SMOKE=""
+TARGET_SET=0
+PROFILE=''
 
 usage() {
   cat <<'USAGE'
-Usage: doctor.sh [--profile spark|luna] [--runtime-smoke explorer|worker] [TARGET]
+Usage: doctor.sh [--workspace PATH] [--profile spark|luna] [PATH]
+
+Runs read-only local diagnostics. It never starts Codex, spawns an agent, writes
+state, or changes installation readiness.
 USAGE
 }
 
-while [[ $# -gt 0 ]]; do
+while [ "$#" -gt 0 ]; do
   case "$1" in
+    --workspace)
+      [ "$#" -ge 2 ] || aspera_err '--workspace requires a path'
+      TARGET="$2"
+      TARGET_SET=1
+      shift 2
+      ;;
     --profile)
+      [ "$#" -ge 2 ] || aspera_err '--profile requires spark or luna'
       PROFILE="$2"
       shift 2
       ;;
-    --runtime-smoke)
-      if [[ $# -lt 2 ]]; then
-        aspera_err "--runtime-smoke requires explorer or worker"
-      fi
-      RUNTIME_SMOKE="$2"
-      case "$RUNTIME_SMOKE" in
-        explorer|worker) ;;
-        *) aspera_err "invalid runtime smoke '$RUNTIME_SMOKE' (expected explorer or worker)" ;;
-      esac
-      shift 2
-      ;;
-    --help|-h)
-      usage
-      exit 0
-      ;;
-    --*)
-      aspera_err "unknown option: $1"
-      ;;
+    --help|-h) usage; exit 0 ;;
+    --*) aspera_err "unknown option: $1" ;;
     *)
+      [ "$TARGET_SET" -eq 0 ] || aspera_err 'workspace supplied more than once'
       TARGET="$1"
+      TARGET_SET=1
       shift
       ;;
   esac
 done
 
 ASPERA_TARGET="$(aspera_normalize_target "$TARGET")"
-asp_state_file="$(aspera_state_file "$ASPERA_TARGET")"
-ASPERA_POLICY_FILE="$ASPERA_TARGET/AGENTS.md"
-
-if [ ! -f "$asp_state_file" ]; then
-  aspera_err "state not found at $asp_state_file"
-fi
-
+state_file="$(aspera_state_file "$ASPERA_TARGET")"
 aspera_check_managed_ancestry "$ASPERA_TARGET"
-if ! asp_state_validate "$asp_state_file"; then
-  aspera_err "unsupported or invalid state; version 0.2 requires schema_version 2"
-fi
-STATE_PROFILE="$(asp_state_get "$asp_state_file" profile)"
-STATE_POLICY="$(asp_state_get "$asp_state_file" policy_installed)"
-GUARD_VERIFIED="$(python3 - "$asp_state_file" <<'PY'
-import json
-import sys
-with open(sys.argv[1], encoding='utf-8') as handle:
-    print('1' if json.load(handle).get('guard', {}).get('verified') is True else '0')
-PY
-)"
+[ -f "$state_file" ] && [ ! -L "$state_file" ] || aspera_err "state not found or unsafe: $state_file"
+asp_state_validate_supported "$state_file" || aspera_err "unsupported or corrupt Aspera state: $state_file"
 
+schema="$(asp_state_schema "$state_file")"
+state_profile="$(asp_state_get "$state_file" profile)"
 if [ -n "$PROFILE" ]; then
   aspera_validate_profile "$PROFILE"
-  if [ "$STATE_PROFILE" != "$PROFILE" ]; then
-    aspera_err "state profile '$STATE_PROFILE' does not match requested '$PROFILE'"
-  fi
-else
-  PROFILE="$STATE_PROFILE"
+  [ "$PROFILE" = "$state_profile" ] || aspera_err "installed profile is '$state_profile', not '$PROFILE'"
 fi
 
-if [ "$STATE_POLICY" -eq 1 ] && [ ! -f "$ASPERA_POLICY_FILE" ]; then
-  aspera_err "missing AGENTS.md for state-managed policy"
+if [ "$schema" != "$ASPERA_STATE_SCHEMA" ]; then
+  aspera_err "state schema $schema is valid but requires migration; run 'aspera install'"
 fi
 
-FAIL=0
-SCAN="$(asp_policy_scan "$ASPERA_POLICY_FILE")"
-if [ "$SCAN" = "invalid" ]; then
-  echo "[INVALID] policy marker layout in $ASPERA_POLICY_FILE"
-  FAIL=1
-fi
+asp_verify_installation "$ASPERA_TARGET" || aspera_err 'managed-file or policy verification failed'
+python3 "$ASPERA_TARGET/.codex/aspera-orchestrator/worker_guard.py" --help >/dev/null 2>&1 || aspera_err 'worker guard is not executable by Python'
+grep -Fq 'command = "python3 .codex/aspera-orchestrator/worker_guard.py"' "$ASPERA_TARGET/.codex/agents/aspera-worker.toml" || aspera_err 'worker profile does not reference the managed guard'
 
-for f in "${ASPERA_MANAGED_FILES[@]}"; do
-  rel="$ASPERA_TARGET/$f"
-  if [ ! -f "$rel" ]; then
-    echo "[MISSING] $rel"
-    FAIL=1
-    continue
-  fi
-  if [ -L "$rel" ]; then
-    echo "[INVALID] managed path is symlink: $rel"
-    FAIL=1
-    continue
-  fi
-  recorded="$(asp_state_get_hash "$asp_state_file" "$f")"
-  current="$(aspera_hash_file "$rel")"
-  if [ "$recorded" != "$current" ]; then
-    echo "[DRIFT] $rel"
-    FAIL=1
-  fi
-done
-
-if ! python3 "$ASPERA_TARGET/.codex/aspera-orchestrator/worker_guard.py" --help >/dev/null 2>&1; then
-  echo "[INVALID] worker guard is not executable by Python"
-  FAIL=1
-fi
-profile_file="$ASPERA_TARGET/.codex/agents/aspera-worker.toml"
-if ! grep -Fq 'command = "python3 .codex/aspera-orchestrator/worker_guard.py"' "$profile_file"; then
-  echo "[INVALID] worker profile does not reference the managed guard"
-  FAIL=1
-fi
-
-if [ "$STATE_POLICY" -eq 1 ]; then
-  if [ "$SCAN" != "ok" ]; then
-    echo "[MISSING] AGENTS.md policy block required by state"
-    FAIL=1
-  else
-    state_policy_hash="$(asp_state_get "$asp_state_file" policy_hash)"
-    current_policy_hash="$(asp_policy_hash "$ASPERA_POLICY_FILE")"
-    if [ "$state_policy_hash" != "$current_policy_hash" ]; then
-      echo "[DRIFT] AGENTS policy block"
-      FAIL=1
-    fi
-  fi
-elif [ "$SCAN" = "ok" ]; then
-  echo "[WARN] AGENTS.md contains an unmanaged policy block"
-fi
-
-if [ "$FAIL" -ne 0 ]; then
-  aspera_err "doctor failed"
-fi
-
-if [ "$GUARD_VERIFIED" -ne 1 ] && [ -z "$RUNTIME_SMOKE" ]; then
-  aspera_err "worker guard is unverified; run doctor --runtime-smoke worker before delegation"
-fi
-
-echo "doctor: state and managed files are valid"
-
-if [ -n "$RUNTIME_SMOKE" ]; then
-  if ! (asp_preflight_models "$PROFILE"); then
-    echo "classification=MODEL_CATALOG_FAILURE"
-    exit 1
-  fi
-  out_file="$(mktemp)"
-  status_file="$(mktemp)"
-  if asp_run_smoke "$RUNTIME_SMOKE" "$ASPERA_TARGET" "$out_file" "$status_file"; then
-    if [ "$RUNTIME_SMOKE" = "worker" ]; then
-      guard_hash="$(asp_state_get_hash "$asp_state_file" '.codex/aspera-orchestrator/worker_guard.py')"
-      asp_mark_guard_verified "$asp_state_file" "$PROFILE" "$guard_hash"
-      aspera_info "worker guard verification recorded"
-    fi
-    aspera_info "runtime-smoke kind: $RUNTIME_SMOKE"
-    cat "$status_file"
-    asp_report_smoke_usage "$out_file"
-    echo "runtime-smoke output:"
-    cat "$out_file"
-    rm -f "$out_file" "$status_file"
-  else
-    rc=$?
-    aspera_info "runtime-smoke kind: $RUNTIME_SMOKE"
-    cat "$status_file" || true
-    asp_report_smoke_usage "$out_file"
-    aspera_info "runtime-smoke failed with $rc"
-    echo "runtime-smoke output:"
-    cat "$out_file" || true
-    rm -f "$out_file" "$status_file"
-    exit "$rc"
-  fi
-fi
-
-echo "doctor: ok"
+aspera_info "Aspera $ASPERA_PLUGIN_VERSION diagnostic passed for $ASPERA_TARGET ($state_profile)."

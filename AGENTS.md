@@ -28,7 +28,7 @@ Do not derive policy from `.codex/config.toml`.
 
 - A clean worktree or quota change alone does not prove worker success or failure.
 - Before spawn, validate the complete worker packet with the managed worker guard.
-- Delegation requires schema-2 state with `guard.verified: true` for the installed profile and guard hash.
+- Use the installed `aspera_worker` directly. If the role is not exposed in the current session, stop that lane with one actionable instruction to run `./aspera install --workspace <repository>` and start a new session; do not run setup, doctor, or a synthetic worker retry inside the task.
 - Spawn workers with the repository root as their working directory so the managed agent-scoped hook path resolves exactly.
 - The worker receives settled architecture and exact evidence anchors; it confirms them but does not rediscover architecture.
 - Permit at most four inspection calls without a successful owned edit or exact verification command.

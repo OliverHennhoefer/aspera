@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+SETUP_SCRIPTS="$ROOT/plugins/aspera-orchestrator/skills/setup/scripts"
+PLUGIN_ID='aspera-orchestrator@aspera'
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  aspera install --workspace PATH [--profile spark|luna] [--no-policy] [--force] [--dry-run]
+  aspera diagnose --workspace PATH [--profile spark|luna]
+  aspera uninstall --workspace PATH [--force] [--dry-run]
+
+Install is also update: it refreshes the plugin from this checkout, reconciles
+the project, migrates supported state, and verifies the result. Start a new
+Codex session after it succeeds; no doctor step is required.
+USAGE
+}
+
+refresh_plugin() {
+  [ "${ASPERA_SKIP_PLUGIN_REFRESH:-0}" != '1' ] || return 0
+  local codex_bin="${ASPERA_CODEX_BIN:-codex}"
+  command -v "$codex_bin" >/dev/null 2>&1 || {
+    printf 'ERROR: %s is required to refresh the Aspera plugin\n' "$codex_bin" >&2
+    exit 1
+  }
+
+  local temp_dir list_file marketplace_root
+  temp_dir="$(mktemp -d)"
+  list_file="$temp_dir/marketplaces.json"
+  cleanup_refresh() { rm -rf "$temp_dir"; }
+
+  if ! (cd "$temp_dir" && "$codex_bin" plugin marketplace list --json > "$list_file"); then
+    cleanup_refresh
+    printf 'ERROR: failed to inspect configured Codex marketplaces\n' >&2
+    exit 1
+  fi
+  marketplace_root="$(python3 - "$list_file" <<'PY'
+import json
+import pathlib
+import sys
+data = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))
+matches = [entry.get('root', '') for entry in data.get('marketplaces', []) if entry.get('name') == 'aspera']
+if len(matches) > 1:
+    raise SystemExit(2)
+print(matches[0] if matches else '')
+PY
+)" || {
+    cleanup_refresh
+    printf 'ERROR: configured Aspera marketplace is ambiguous\n' >&2
+    exit 1
+  }
+
+  if [ -n "$marketplace_root" ]; then
+    configured="$(cd "$marketplace_root" 2>/dev/null && pwd -P)" || {
+      cleanup_refresh
+      printf 'ERROR: configured Aspera marketplace does not exist: %s\n' "$marketplace_root" >&2
+      exit 1
+    }
+    if [ "$configured" != "$ROOT" ]; then
+      cleanup_refresh
+      printf 'ERROR: marketplace aspera points to %s, not this checkout %s\n' "$configured" "$ROOT" >&2
+      exit 1
+    fi
+  else
+    (cd "$temp_dir" && "$codex_bin" plugin marketplace add "$ROOT") || {
+      cleanup_refresh
+      printf 'ERROR: failed to add the Aspera marketplace\n' >&2
+      exit 1
+    }
+  fi
+
+  (cd "$temp_dir" && "$codex_bin" plugin add "$PLUGIN_ID") || {
+    cleanup_refresh
+    printf 'ERROR: failed to install or refresh %s\n' "$PLUGIN_ID" >&2
+    exit 1
+  }
+  cleanup_refresh
+}
+
+[ "$#" -gt 0 ] || { usage; exit 1; }
+command_name="$1"
+shift
+
+case "$command_name" in
+  install)
+    args=("$@")
+    dry_run=0
+    for arg in "${args[@]}"; do
+      [ "$arg" != '--dry-run' ] || dry_run=1
+    done
+    if [ "$dry_run" -eq 1 ]; then
+      exec bash "$SETUP_SCRIPTS/install.sh" "${args[@]}"
+    fi
+    bash "$SETUP_SCRIPTS/install.sh" "${args[@]}" --dry-run >/dev/null
+    refresh_plugin
+    exec bash "$SETUP_SCRIPTS/install.sh" "${args[@]}"
+    ;;
+  diagnose)
+    exec bash "$SETUP_SCRIPTS/doctor.sh" "$@"
+    ;;
+  uninstall)
+    exec bash "$SETUP_SCRIPTS/uninstall.sh" "$@"
+    ;;
+  --help|-h|help)
+    usage
+    ;;
+  *)
+    printf 'ERROR: unknown command: %s\n' "$command_name" >&2
+    usage >&2
+    exit 1
+    ;;
+esac

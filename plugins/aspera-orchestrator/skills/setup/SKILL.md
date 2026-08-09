@@ -1,32 +1,36 @@
 ---
 name: setup
 description: |
-  Install, update, doctor-check, and uninstall project-scoped orchestrator
-  profiles from the bundled setup scripts.
+  Diagnose or remove a project-scoped Aspera installation when the user
+  explicitly requests lifecycle support. Normal installation and updates use
+  the checkout's root ./aspera command in a terminal.
 ---
 
-# Setup skill
+# Aspera lifecycle support
 
-Resolves and executes its bundled scripts directory.
+Normal use is terminal-first:
 
-Run one of:
+```bash
+./aspera install --workspace /absolute/path/to/project
+```
 
-- Install:
-  - `bash ./scripts/install.sh [--profile spark|luna] [--install-policy] [--dry-run] [--force] [TARGET]`
-- Health check:
-  - `bash ./scripts/doctor.sh [--profile spark|luna] [--runtime-smoke explorer|worker] [TARGET]`
-- Uninstall:
-  - `bash ./scripts/uninstall.sh [--dry-run] [--force] [TARGET]`
+That command installs or updates the plugin and project profile, migrates supported
+state, verifies exact managed files, and prints the fresh-session boundary. Do not
+invoke this skill during an implementation task and do not add a post-install doctor
+or runtime smoke step.
 
-### Executed behavior
+Use the bundled scripts only for explicitly requested support:
 
-- Writes managed role files into `.codex/agents/`.
-- Writes the worker packet/progress guard to `.codex/aspera-orchestrator/worker_guard.py`.
-- Optionally installs managed policy block into root `AGENTS.md` when using `--install-policy`.
-- Requires state schema 2; version 0.1 state is a hard break and is not upgraded or uninstalled automatically.
-- Preserves managed/serialized behavior defined by installer state and scripts.
+- Read-only diagnosis: `bash ./scripts/doctor.sh [--profile spark|luna] [--workspace PATH]`
+- Project uninstall: `bash ./scripts/uninstall.sh [--dry-run] [--force] [--workspace PATH]`
+
+Diagnosis never starts Codex, spawns an agent, writes state, or changes readiness.
+Installation state schema 3 is a compact managed-file receipt; the root installer
+automatically migrates valid schema-1 and schema-2 receipts.
 
 ## Non-goals
 
-- Do not alter plugin manifests.
-- Do not change managed files outside the orchestrator profile contract.
+- No task-time setup or repair.
+- No model-catalog preflight.
+- No runtime-smoke or synthetic delegation.
+- No direct Codex cache or project configuration mutation.

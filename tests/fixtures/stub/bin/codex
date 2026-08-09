@@ -1,139 +1,43 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CATALOG="${ASPERA_STUB_CATALOG:-${ASPERA_CODEX_STUB_CATALOG:-${ASPERA_CODEX_STUB_MODELS_JSON:-${ASPERA_CODEX_STUB_MODELS:-/dev/null}}}}"
-STUB_STATUS="${ASPERA_CODEX_STUB_STATUS:-0}"
-
-if [[ ! -f "${CATALOG}" ]]; then
-  CATALOG="${ASPERA_CODEX_STUB_DEFAULT_CATALOG:-${ASPERA_CODEX_STUB_FALLBACK:-${BASH_SOURCE[0]%/*}/../models.json}}"
+if [[ -n "${ASPERA_STUB_COMMAND_LOG:-}" ]]; then
+  printf '%s\n' "$*" >> "${ASPERA_STUB_COMMAND_LOG}"
 fi
 
-if [[ "$1" == "--version" ]]; then
-  echo "aspera-codex-stub/1.0"
+if [[ "${1:-}" == "--version" ]]; then
+  echo "aspera-codex-stub/2.0"
   exit 0
+fi
+
+if [[ "${1:-}" == "plugin" && "${2:-}" == "marketplace" && "${3:-}" == "list" && "${4:-}" == "--json" ]]; then
+  python3 - "${ASPERA_STUB_MARKETPLACE_ROOT:-}" <<'PY'
+import json
+import sys
+root = sys.argv[1]
+entries = [] if not root else [{"name": "aspera", "root": root, "marketplaceSource": {"sourceType": "local", "source": root}}]
+print(json.dumps({"marketplaces": entries}))
+PY
+  exit 0
+fi
+
+if [[ "${1:-}" == "plugin" && "${2:-}" == "marketplace" && "${3:-}" == "add" ]]; then
+  exit "${ASPERA_STUB_PLUGIN_STATUS:-0}"
+fi
+
+if [[ "${1:-}" == "plugin" && "${2:-}" == "add" && "${3:-}" == "aspera-orchestrator@aspera" ]]; then
+  exit "${ASPERA_STUB_PLUGIN_STATUS:-0}"
 fi
 
 if [[ "${1:-}" == "debug" && "${2:-}" == "models" ]]; then
-  if [[ -n "${ASPERA_STUB_DEBUG_MODELS_ARGS_FILE:-}" ]]; then
-    printf '%s\n' "$*" > "${ASPERA_STUB_DEBUG_MODELS_ARGS_FILE}"
-  fi
-  if [[ ! -f "${CATALOG}" ]]; then
-    echo "{\"models\":{}}"
-    exit 0
-  fi
-  cat "${CATALOG}"
-  exit 0
+  echo "model catalog must not be queried by installation" >&2
+  exit 88
 fi
 
-if [[ "$1" == "catalog" ]] || [[ "$1" == "models" ]] || [[ "$1" == "list-models" ]]; then
-  if [[ ! -f "${CATALOG}" ]]; then
-    echo "[]"
-    exit 0
-  fi
-  cat "${CATALOG}"
-  exit 0
+if [[ "${1:-}" == "exec" ]]; then
+  echo "runtime smoke must not run during installation or diagnosis" >&2
+  exit 89
 fi
 
-if [[ "$1" == "validate-models" ]]; then
-  exit "${STUB_STATUS}"
-fi
-
-if [[ "$1" == "exec" ]]; then
-  shift
-  if [[ -n "${ASPERA_SMOKE_ARGS_FILE:-}" ]]; then
-    printf '%s\n' "$@" > "${ASPERA_SMOKE_ARGS_FILE}"
-  fi
-  smoke_root=""
-  previous=""
-  for argument in "$@"; do
-    if [[ "${previous}" == "--cd" ]]; then
-      smoke_root="${argument}"
-      break
-    fi
-    previous="${argument}"
-  done
-
-  if [[ "$*" == *"aspera_worker"* ]]; then
-    if [[ ! -f "${smoke_root}/.codex/agents/aspera-worker.toml" ]]; then
-      echo '{"type":"error","message":"worker profile missing"}'
-      exit 7
-    fi
-    if [[ ! -f "${smoke_root}/.codex/aspera-orchestrator/worker_guard.py" ]]; then
-      echo '{"type":"error","message":"worker guard missing"}'
-      exit 7
-    fi
-    case "${ASPERA_STUB_SMOKE_RESULT:-success}" in
-      approval-blocked)
-        echo '{"type":"error","message":"approval required for worker edit"}'
-        exit 8
-        ;;
-      spawn-failure)
-        echo '{"type":"error","message":"worker spawn failed"}'
-        exit 9
-        ;;
-      execution-failure)
-        echo '{"type":"error","message":"worker runtime failed"}'
-        exit 11
-        ;;
-      silent)
-        sleep 2
-        ;;
-      inspection-loop)
-        echo '{"type":"item.completed","item":{"type":"collab_tool_call","status":"completed"}}'
-        sleep 2
-        ;;
-      post-edit-hang)
-        echo '{"type":"item.completed","item":{"type":"collab_tool_call","status":"completed"}}'
-        printf '%s\n' 'ASPERA_WORKER_SMOKE_OK' > "${smoke_root}/aspera-worker-smoke.txt"
-        sleep 2
-        ;;
-      invalid-handoff)
-        echo '{"type":"item.completed","item":{"type":"collab_tool_call","status":"completed"}}'
-        printf '%s\n' 'ASPERA_WORKER_SMOKE_OK' > "${smoke_root}/aspera-worker-smoke.txt"
-        echo '{"type":"item.completed","item":{"type":"agent_message","text":"incomplete"}}'
-        exit 0
-        ;;
-      success) ;;
-      *)
-        echo '{"type":"error","message":"invalid stub smoke result"}'
-        exit 10
-        ;;
-    esac
-    echo '{"type":"item.completed","item":{"type":"agent_message","text":"ASPERA_GUARD_ARMED TASK_ID=ASPERA_RUNTIME_WORKER"}}'
-    echo '{"type":"item.completed","item":{"type":"collab_tool_call","status":"completed"}}'
-    printf '%s\n' 'ASPERA_WORKER_SMOKE_OK' > "${smoke_root}/aspera-worker-smoke.txt"
-    printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"ASPERA_WORKER_SMOKE_OK\nSTATUS: done\nTASK_ID: ASPERA_RUNTIME_WORKER"}}'
-  else
-    printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"ASPERA_EXPLORER_SMOKE_OK"}}'
-  fi
-  printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":100,"cached_input_tokens":25,"output_tokens":20,"reasoning_tokens":10}}'
-  exit 0
-fi
-
-if [[ "$*" == "model" ]]; then
-  shift
-fi
-
-if [[ "${1:-}" == "inspect" ]]; then
-  shift
-fi
-
-if [[ "$#" -gt 0 ]]; then
-  command_name="${1:-}"
-  if [[ "${command_name}" == "--help" ]]; then
-    cat <<'EOF'
-Usage:
-  codex models [--json]
-  codex catalog [--json]
-EOF
-    exit 0
-  fi
-  if [[ "${command_name}" == "models" || "${command_name}" == "catalog" || "${command_name}" == "inspect" ]]; then
-    if [[ -f "${CATALOG}" ]]; then
-      cat "${CATALOG}"
-      exit 0
-    fi
-  fi
-fi
-
-echo "ASPERA_TEST_STUB_OK"
+echo "unsupported codex stub invocation: $*" >&2
+exit 90

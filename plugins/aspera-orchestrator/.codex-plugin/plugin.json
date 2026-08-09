@@ -1,6 +1,6 @@
 {
   "name": "aspera-orchestrator",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Native Codex orchestrator for deterministic planner-worker-verifier execution.",
   "author": {
     "name": "Oliver Hennhöfer",
@@ -31,7 +31,7 @@
     "websiteURL": "https://github.com/OliverHennhoefer/aspera",
     "defaultPrompt": [
       "Start a scoped coding task with $orchestrate.",
-      "Prepare orchestrator roles with $setup.",
+      "Use the installed project roles directly.",
       "Run verification and report results."
     ]
   }
