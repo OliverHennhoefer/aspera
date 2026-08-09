@@ -446,8 +446,12 @@ PY
 }
 
 asp_validate_policy_assets() {
-  [ -f "$ASPERA_POLICY_SRC" ] && [ ! -L "$ASPERA_POLICY_SRC" ] || aspera_err "policy source is missing or unsafe: $ASPERA_POLICY_SRC"
-  [ -f "$ASPERA_PROTOCOL_SRC" ] && [ ! -L "$ASPERA_PROTOCOL_SRC" ] || aspera_err "protocol source is missing or unsafe: $ASPERA_PROTOCOL_SRC"
+  if [ ! -f "$ASPERA_POLICY_SRC" ] || [ -L "$ASPERA_POLICY_SRC" ]; then
+    aspera_err "policy source is missing or unsafe: $ASPERA_POLICY_SRC"
+  fi
+  if [ ! -f "$ASPERA_PROTOCOL_SRC" ] || [ -L "$ASPERA_PROTOCOL_SRC" ]; then
+    aspera_err "protocol source is missing or unsafe: $ASPERA_PROTOCOL_SRC"
+  fi
   local policy_bytes
   policy_bytes="$(wc -c < "$ASPERA_POLICY_SRC" | tr -d ' ')"
   [ "$policy_bytes" -le 2048 ] || aspera_err "managed routing policy exceeds 2048 bytes: $policy_bytes"
