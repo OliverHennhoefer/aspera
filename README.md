@@ -1,8 +1,6 @@
 # Aspera Orchestrator
 
-Aspera is an experimental Codex plugin for bounded planner-worker-verifier execution. The parent remains responsible for architecture, verification, and final acceptance.
-
-Version: `0.3.0` alpha. Packet v2 remains current. State schema 3 automatically migrates valid schema-1 and schema-2 installations.
+Aspera is a Codex plugin for bounded planner-worker-verifier execution. The parent remains responsible for architecture, verification, and final acceptance.
 
 ## Requirements
 
