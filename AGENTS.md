@@ -20,9 +20,9 @@ Do not derive policy from `.codex/config.toml`.
 
 ## Activation
 
-- This repository opts into Aspera for implementation work.
-- Direct mode remains parent-only and performs no delegation.
-- Do not apply Aspera orchestration to reviews, explanations, status requests, setup, doctor, installation, or uninstall work; use the applicable workflow or skill instead.
+- Development of Aspera itself is always parent-direct. Do not delegate implementation in this repository.
+- The managed downstream policy is tested here but applies only after installation into another repository.
+- Do not apply Aspera orchestration to reviews, explanations, status requests, setup, doctor, installation, or uninstall work.
 
 ## Worker lifecycle protocol
 
