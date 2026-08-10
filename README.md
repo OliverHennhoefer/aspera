@@ -13,6 +13,8 @@ Aspera reduces premium parent-model quota without trading away correctness. Sol 
 ./aspera install --workspace /absolute/path/to/project
 ```
 
+GitHub `v*` releases identify stable versions only; update with `git pull` in this checkout and then run the command above.
+
 Fresh installs use the `adaptive` profile:
 
 | Responsibility | Model |

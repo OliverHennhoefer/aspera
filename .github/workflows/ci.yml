@@ -53,3 +53,72 @@ jobs:
             fi
           fi
           shellcheck tests/*.sh tests/fixtures/stub/bin/codex plugins/aspera-orchestrator/skills/setup/scripts/*.sh
+
+  release:
+    name: Publish GitHub release
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout tested commit and tags
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Publish manifest version
+        shell: bash
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          GH_TOKEN: ${{ github.token }}
+          MANIFEST_PATH: plugins/aspera-orchestrator/.codex-plugin/plugin.json
+        run: |
+          set -euo pipefail
+
+          version="$(python3 - "$MANIFEST_PATH" <<'PY'
+          import json
+          import pathlib
+          import re
+          import sys
+
+          manifest = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+          version = manifest.get("version")
+          if not isinstance(version, str) or re.fullmatch(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", version) is None:
+              raise SystemExit("plugin manifest version must be stable SemVer (MAJOR.MINOR.PATCH)")
+          print(version)
+          PY
+          )"
+          tag="v${version}"
+
+          version_changed=1
+          zero_sha='0000000000000000000000000000000000000000'
+          if [[ "$BEFORE_SHA" != "$zero_sha" ]]; then
+            if ! git cat-file -e "${BEFORE_SHA}^{commit}" 2>/dev/null; then
+              echo "ERROR: push base commit is unavailable: $BEFORE_SHA" >&2
+              exit 1
+            fi
+            if git cat-file -e "${BEFORE_SHA}:${MANIFEST_PATH}" 2>/dev/null; then
+              previous_version="$(git show "${BEFORE_SHA}:${MANIFEST_PATH}" | python3 -c 'import json, sys; print(json.load(sys.stdin).get("version", ""))')"
+              if [[ "$previous_version" == "$version" ]]; then
+                version_changed=0
+              fi
+            fi
+          fi
+
+          if git show-ref --verify --quiet "refs/tags/${tag}"; then
+            tag_commit="$(git rev-list -n 1 "$tag")"
+            if [[ "$version_changed" -eq 1 && "$tag_commit" != "$GITHUB_SHA" ]]; then
+              echo "ERROR: manifest version $version reuses $tag at $tag_commit" >&2
+              exit 1
+            fi
+            if gh release view "$tag" >/dev/null 2>&1; then
+              echo "Release $tag already exists."
+              exit 0
+            fi
+            gh release create "$tag" --verify-tag --generate-notes
+            exit 0
+          fi
+
+          gh release create "$tag" --target "$GITHUB_SHA" --generate-notes
