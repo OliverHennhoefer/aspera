@@ -554,7 +554,7 @@ test_contract_text() {
   assert_contains "$POLICY" 'Luna Max is the default worker' 'managed policy is Luna-first'
   assert_contains "$POLICY" 'do not retry Spark or count a blocked goal turn' 'Spark availability never blocks the goal'
   assert_contains "$PROTOCOL" 'Never use Spark' 'lazy protocol contains strict Spark exclusions'
-  assert_contains "$PROTOCOL" 'change only `WORKER_TARGET: spark` to `WORKER_TARGET: luna`' 'fallback retargets the unchanged capsule'
+  assert_contains "$PROTOCOL" "change only \`WORKER_TARGET: spark\` to \`WORKER_TARGET: luna\`" 'fallback retargets the unchanged capsule'
   assert_contains "$ROOT/AGENTS.md" 'Always implement Aspera itself parent-direct' 'Aspera development is parent-direct'
   assert_contains "$ROOT/AGENTS.md" './aspera install --workspace' 'repository policy pins the one-command lifecycle'
   assert_contains "$ROOT/AGENTS.md" 'Preserve the installed profile and policy' 'repository policy pins update preservation'
