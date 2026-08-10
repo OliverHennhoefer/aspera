@@ -1,6 +1,6 @@
 {
   "name": "aspera-orchestrator",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Luna-first Codex orchestration with a conditional bounded Spark lane.",
   "author": {
     "name": "Oliver Hennhöfer",

@@ -277,6 +277,8 @@ def _check_orchestrate_activation_rules(repo_root: Path, plugin_dir: Path, resul
         "luna max is the default worker",
         "spark is optional",
         "explicit direct/no-delegation",
+        "spark quota, capacity, routing, or role unavailability is never a blocker",
+        "do not retry spark or count a blocked goal turn",
         ".codex/aspera-orchestrator/protocol.md",
         "no recursive delegation",
         "development of aspera itself",
@@ -301,6 +303,9 @@ def _check_orchestrate_activation_rules(repo_root: Path, plugin_dir: Path, resul
         "worker_target: luna | spark",
         "unchanged luna-ready capsule",
         "do not retry spark",
+        "spark availability fallback",
+        "change only `worker_target: spark` to `worker_target: luna`",
+        "does not consume the one luna repair turn",
         "never use spark",
         "expected_exit",
     )
@@ -590,6 +595,8 @@ def _check_manual_eval_activation_records(repo_root: Path, results: List[Validat
         ("spark_incremental", "max_median_total_quota_ratio_vs_luna"): 0.8,
         ("spark_incremental", "max_parent_packet_quota_ratio_vs_luna"): 1.05,
         ("spark_incremental", "max_median_latency_ratio_vs_luna"): 1.25,
+        ("spark_incremental", "max_availability_retry_count"): 0,
+        ("spark_incremental", "max_spark_availability_block_rate"): 0.0,
         ("spark_incremental", "max_extra_context_construction_rate"): 0.0,
         ("spark_incremental", "tuning_iterations_before_removal"): 1,
         ("no_fit", "max_quota_ratio_vs_direct_sol"): 1.05,
@@ -674,8 +681,8 @@ def _check_manifest_and_marketplace(plugin_dir: Path, repo_root: Path, results: 
     else:
         ok(results, str(manifest_path), "manifest name matches plugin folder")
 
-    if manifest.get("version") != "0.4.0":
-        fail(results, str(manifest_path), "manifest version must be 0.4.0")
+    if manifest.get("version") != "0.4.1":
+        fail(results, str(manifest_path), "manifest version must be 0.4.1")
 
     marketplace_path = repo_root / ".agents" / "plugins" / "marketplace.json"
     if not marketplace_path.is_file():

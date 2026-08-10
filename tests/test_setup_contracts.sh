@@ -125,7 +125,7 @@ assert_schema4() {
 import json, pathlib, re, sys
 data = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))
 expected_keys = {'schema_version','plugin','plugin_version','profile','managed_files','guard_hash','policy_installed','policy_hash'}
-if set(data) != expected_keys or data['schema_version'] != 4 or data['plugin_version'] != '0.4.0':
+if set(data) != expected_keys or data['schema_version'] != 4 or data['plugin_version'] != '0.4.1':
     raise SystemExit(1)
 profile = sys.argv[2]
 if data['profile'] != profile or data['policy_installed'] is not bool(int(sys.argv[3])):
@@ -312,6 +312,20 @@ test_legacy_migrations() {
     assert_absent "$target/.codex/agents/aspera-worker.toml" 'migration removes legacy worker file'
     assert_absent "$target/.codex/agents/aspera-verifier.toml" 'migration removes legacy verifier file'
   done
+
+  target="$TMP_ROOT/version-0.4.0"
+  mkdir -p "$target"
+  install_direct "$TMP_ROOT/version-current-seed.out" "$target" >/dev/null
+  python3 - "$target/$STATE_REL" <<'PY'
+import json, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+data = json.loads(path.read_text())
+data['plugin_version'] = '0.4.0'
+path.write_text(json.dumps(data, indent=2) + '\n')
+PY
+  rc="$(install_direct "$TMP_ROOT/version-0.4.0-migrate.out" "$target")"
+  assert_eq "$rc" '0' 'schema-4 version 0.4.0 updates in one install'
+  assert_schema4 "$target/$STATE_REL" adaptive 1
 }
 
 test_drift_and_transactions() {
@@ -471,7 +485,7 @@ test_plugin_refresh_failures() {
   rc="$(capture "$TMP_ROOT/marketplace-add.out" bash "$CLI" install --workspace "$target")"
   assert_eq "$rc" '0' 'missing marketplace is added'
   assert_contains "$COMMAND_LOG" "plugin marketplace add $ROOT --json" 'root command adds the checkout marketplace'
-  assert_eq "$(stub_plugin_version)" '0.4.0' 'first plugin install matches the checkout version'
+  assert_eq "$(stub_plugin_version)" '0.4.1' 'first plugin install matches the checkout version'
 
   reset_stub
   target="$TMP_ROOT/plugin-version-update"
@@ -480,12 +494,12 @@ test_plugin_refresh_failures() {
   rc="$(capture "$TMP_ROOT/plugin-version-update.out" bash "$CLI" install --workspace "$target")"
   assert_eq "$rc" '0' 'different-version plugin update succeeds directly'
   assert_not_contains "$COMMAND_LOG" 'plugin remove aspera-orchestrator@aspera' 'different-version update does not remove the prior plugin first'
-  assert_eq "$(stub_plugin_version)" '0.4.0' 'different-version update verifies the checkout version'
+  assert_eq "$(stub_plugin_version)" '0.4.1' 'different-version update verifies the checkout version'
 
   reset_stub
   target="$TMP_ROOT/plugin-wrong-source"
   mkdir -p "$target"
-  seed_stub_plugin '0.4.0' 'other-marketplace' "$TMP_ROOT/other-marketplace"
+  seed_stub_plugin '0.4.1' 'other-marketplace' "$TMP_ROOT/other-marketplace"
   rc="$(capture "$TMP_ROOT/plugin-wrong-source.out" bash "$CLI" install --workspace "$target")"
   assert_eq "$rc" '1' 'installed Aspera plugin from an unexpected marketplace is refused'
   assert_absent "$target/$STATE_REL" 'unexpected plugin source leaves project untouched'
@@ -493,7 +507,7 @@ test_plugin_refresh_failures() {
   reset_stub
   target="$TMP_ROOT/plugin-remove-failure"
   mkdir -p "$target"
-  seed_stub_plugin '0.4.0'
+  seed_stub_plugin '0.4.1'
   export ASPERA_STUB_PLUGIN_REMOVE_STATUS=7
   rc="$(capture "$TMP_ROOT/plugin-remove-failure.out" bash "$CLI" install --workspace "$target")"
   assert_eq "$rc" '1' 'same-version plugin removal failure is reported'
@@ -503,7 +517,7 @@ test_plugin_refresh_failures() {
   reset_stub
   target="$TMP_ROOT/plugin-reinstall-failure"
   mkdir -p "$target"
-  seed_stub_plugin '0.4.0'
+  seed_stub_plugin '0.4.1'
   export ASPERA_STUB_PLUGIN_ADD_STATUS=8
   rc="$(capture "$TMP_ROOT/plugin-reinstall-failure.out" bash "$CLI" install --workspace "$target")"
   assert_eq "$rc" '1' 'same-version plugin reinstall failure is reported'
@@ -538,7 +552,9 @@ test_contract_text() {
   assert_not_contains "$POLICY" 'Express:' 'managed policy has no Express mode'
   assert_not_contains "$POLICY" 'Standard:' 'managed policy has no Standard mode'
   assert_contains "$POLICY" 'Luna Max is the default worker' 'managed policy is Luna-first'
+  assert_contains "$POLICY" 'do not retry Spark or count a blocked goal turn' 'Spark availability never blocks the goal'
   assert_contains "$PROTOCOL" 'Never use Spark' 'lazy protocol contains strict Spark exclusions'
+  assert_contains "$PROTOCOL" 'change only `WORKER_TARGET: spark` to `WORKER_TARGET: luna`' 'fallback retargets the unchanged capsule'
   assert_contains "$ROOT/AGENTS.md" 'Always implement Aspera itself parent-direct' 'Aspera development is parent-direct'
   assert_contains "$ROOT/AGENTS.md" './aspera install --workspace' 'repository policy pins the one-command lifecycle'
   assert_contains "$ROOT/AGENTS.md" 'Preserve the installed profile and policy' 'repository policy pins update preservation'

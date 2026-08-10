@@ -112,6 +112,8 @@
     "interruption",
     "single Luna repair",
     "single explicit Spark-to-Luna upgrade",
+    "Spark startup quota exhaustion with immediate Luna fallback",
+    "Spark mid-turn capacity loss with partial worktree edits",
     "explicit direct request"
   ],
   "thresholds": {
@@ -136,6 +138,8 @@
       "max_median_latency_ratio_vs_sol": 2.0,
       "max_block_rate": 0.05,
       "max_upgrade_rate": 0.05,
+      "max_availability_retry_count": 0,
+      "max_spark_availability_block_rate": 0.0,
       "max_parent_intervention_rate": 0.05,
       "max_extra_context_construction_rate": 0.0,
       "tuning_iterations_before_removal": 1
@@ -191,6 +195,10 @@
       "guard_classification": null,
       "blocked": null,
       "upgraded_to_luna": null,
+      "availability_failure_reason": null,
+      "availability_retry_count": null,
+      "availability_fallback_to_luna": null,
+      "spark_availability_blocked_goal": null,
       "extra_context_constructed": null,
       "parent_interventions": null,
       "result": "pending"

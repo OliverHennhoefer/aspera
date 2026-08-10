@@ -28,7 +28,7 @@ Use Luna without the conditional Spark role:
 ./aspera install --workspace /absolute/path/to/project --profile luna
 ```
 
-The legacy `--profile spark` name is accepted for one release as an alias for `adaptive`. Existing valid 0.1–0.3 installations migrate transactionally. Start a new Codex session after install or update.
+The legacy `--profile spark` name is accepted for one release as an alias for `adaptive`. Existing valid 0.1–0.4.0 installations update transactionally. Start a new Codex session after install or update.
 
 The installer manages role files, packet-v3 guard, lazy protocol, compact project policy, and state receipt. It refuses unmanaged conflicts, drift, and unsafe symlinks; `--force` backs up approved drift before complete reconciliation. It also refreshes the checkout plugin through supported Codex commands and verifies its version, source, and enabled state.
 
@@ -44,7 +44,7 @@ There are no public orchestration modes. With policy installed, Sol performs tar
 - Luna Max for normal bounded implementation;
 - Spark only when the unchanged Luna-ready capsule passes every strict mechanical-work gate.
 
-Spark is never a reason to add planning, context, or another handoff. It gets one attempt; a concrete failure may be upgraded once to Luna. Workers run focused checks, and Sol inspects the diff and reruns the decisive command.
+Spark is never a reason to add planning, context, or another handoff. It gets one attempt. Quota, capacity, routing, or role unavailability immediately retargets the unchanged capsule to Luna and never blocks the goal; the fallback is reported explicitly. A concrete implementation failure may also be upgraded once to Luna. Workers run focused checks, and Sol inspects the diff and reruns the decisive command.
 
 Detailed routing, packet v3, limits, handoff, and failure rules are installed lazily at:
 
@@ -52,7 +52,7 @@ Detailed routing, packet v3, limits, handoff, and failure rules are installed la
 .codex/aspera-orchestrator/protocol.md
 ```
 
-If an expected role is absent, reinstall and start a new session. Aspera never silently substitutes a model.
+If Luna is absent, reinstall and start a new session. Spark absence uses the explicit automatic Luna fallback. Aspera never silently substitutes a model.
 
 ## Managed project files
 

@@ -74,6 +74,7 @@ aspera_check_managed_ancestry "$ASPERA_TARGET"
 
 HAS_STATE=0
 STATE_SCHEMA=''
+STATE_PLUGIN_VERSION=''
 STATE_PROFILE=''
 STATE_POLICY=0
 if [ -e "$asp_state_file" ] || [ -L "$asp_state_file" ]; then
@@ -83,6 +84,7 @@ if [ -e "$asp_state_file" ] || [ -L "$asp_state_file" ]; then
   asp_state_validate_supported "$asp_state_file" || aspera_err "unsupported or corrupt Aspera state: $asp_state_file"
   HAS_STATE=1
   STATE_SCHEMA="$(asp_state_schema "$asp_state_file")"
+  STATE_PLUGIN_VERSION="$(asp_state_get "$asp_state_file" plugin_version)"
   STATE_PROFILE="$(asp_state_get "$asp_state_file" profile)"
   STATE_POLICY="$(asp_state_get "$asp_state_file" policy_installed)"
 fi
@@ -179,7 +181,7 @@ if [ "$DESIRED_POLICY" -eq 1 ]; then
 fi
 
 UPDATE_NEEDED=0
-if [ "$HAS_STATE" -eq 0 ] || [ "$STATE_SCHEMA" != "$ASPERA_STATE_SCHEMA" ] || [ "$STATE_PROFILE" != "$PROFILE" ] || [ "$STATE_POLICY" -ne "$DESIRED_POLICY" ]; then
+if [ "$HAS_STATE" -eq 0 ] || [ "$STATE_SCHEMA" != "$ASPERA_STATE_SCHEMA" ] || [ "$STATE_PLUGIN_VERSION" != "$ASPERA_PLUGIN_VERSION" ] || [ "$STATE_PROFILE" != "$PROFILE" ] || [ "$STATE_POLICY" -ne "$DESIRED_POLICY" ]; then
   UPDATE_NEEDED=1
 fi
 for pair in "${DESIRED_PAIRS[@]}"; do
@@ -208,6 +210,7 @@ fi
 if [ "$DRY_RUN" -eq 1 ]; then
   aspera_info "DRY-RUN: would reconcile Aspera $ASPERA_PLUGIN_VERSION for $ASPERA_TARGET ($PROFILE, policy=$DESIRED_POLICY)"
   [ "$STATE_SCHEMA" != '' ] && [ "$STATE_SCHEMA" != "$ASPERA_STATE_SCHEMA" ] && aspera_info "DRY-RUN: would migrate state schema $STATE_SCHEMA to $ASPERA_STATE_SCHEMA"
+  [ "$STATE_PLUGIN_VERSION" != '' ] && [ "$STATE_PLUGIN_VERSION" != "$ASPERA_PLUGIN_VERSION" ] && aspera_info "DRY-RUN: would update plugin receipt $STATE_PLUGIN_VERSION to $ASPERA_PLUGIN_VERSION"
   [ "$DRIFT" -eq 0 ] || aspera_info 'DRY-RUN: would back up and replace approved drift'
   aspera_info 'DRY-RUN: no files written'
   exit 0
@@ -304,7 +307,7 @@ if profile == 'adaptive':
 payload = {
     'schema_version': 4,
     'plugin': 'aspera-orchestrator',
-    'plugin_version': '0.4.0',
+    'plugin_version': '0.4.1',
     'profile': profile,
     'managed_files': managed,
     'guard_hash': sys.argv[8],

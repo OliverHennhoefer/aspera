@@ -4,7 +4,7 @@
 set -euo pipefail
 
 ASPERA_PLUGIN_NAME='aspera-orchestrator'
-ASPERA_PLUGIN_VERSION='0.4.0'
+ASPERA_PLUGIN_VERSION='0.4.1'
 ASPERA_STATE_SCHEMA='4'
 ASPERA_POLICY_MARKER_START='<!-- aspera-orchestrator:policy:start -->'
 ASPERA_POLICY_MARKER_END='<!-- aspera-orchestrator:policy:end -->'
@@ -184,8 +184,8 @@ except Exception:
 if not isinstance(data, dict) or data.get('plugin') != 'aspera-orchestrator':
     raise SystemExit(1)
 schema = data.get('schema_version')
-versions = {1: '0.1.0', 2: '0.2.0', 3: '0.3.0', 4: '0.4.0'}
-if schema not in versions or data.get('plugin_version') != versions[schema]:
+versions = {1: {'0.1.0'}, 2: {'0.2.0'}, 3: {'0.3.0'}, 4: {'0.4.0', '0.4.1'}}
+if schema not in versions or data.get('plugin_version') not in versions[schema]:
     raise SystemExit(1)
 profile = data.get('profile')
 if profile not in ({'spark', 'luna'} if schema < 4 else {'adaptive', 'luna'}):

@@ -20,7 +20,7 @@ Do not derive policy from `.codex/config.toml`.
 - Sol owns architecture, routing, and final acceptance.
 - Luna Max is the primary downstream implementation worker.
 - Spark is conditional, receives the unchanged Luna-ready capsule, and never causes extra planning or context construction.
-- No public Direct/Express/Standard modes, recursive delegation, or silent model substitution.
+- No public Direct/Express/Standard modes, recursive delegation, or silent model substitution. Spark unavailability automatically falls back to Luna with explicit reporting.
 - Quality gates quota savings; failed Spark economics remove or disable the lane.
 - Managed installation, migration, drift handling, backup, and uninstall remain transactional and recoverable.
 

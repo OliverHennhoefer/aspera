@@ -16,8 +16,9 @@ Rules:
 
 - Honor explicit direct/no-delegation requests.
 - Never enrich or split work merely to use Spark.
-- Never substitute models silently.
-- Use at most one Spark attempt, one explicit Spark-to-Luna upgrade, and one Luna repair turn.
+- Never substitute models silently. Report every automatic fallback.
+- Use at most one Spark attempt. Spark quota, capacity, routing, or role unavailability immediately retargets the unchanged capsule to Luna and never counts as a blocked goal turn.
+- Use at most one explicit Spark-to-Luna implementation upgrade and one Luna repair turn; availability fallback does not consume either allowance.
 - Use specialists only when they avoid equivalent Sol work or gate concrete risk.
 - Workers verify their changes; Sol owns final diff inspection and decisive rerun.
 - No recursive delegation.
