@@ -485,7 +485,10 @@ test_plugin_refresh() {
 
 test_contract_text() {
   assert_contains "$POLICY" 'one focused edit-and-test cycle' 'policy has the direct-work threshold'
+  # The backticks below are literal Markdown expected in the policy.
+  # shellcheck disable=SC2016
   assert_contains "$POLICY" 'native `gpt-5.6-luna` at `max`' 'policy targets native Luna Max'
+  # shellcheck disable=SC2016
   assert_contains "$POLICY" 'native `gpt-5.6-terra` at `high`' 'policy bounds native Terra review'
   assert_contains "$POLICY" 'Default to one worker' 'policy defaults to one worker'
   assert_not_contains "$POLICY" 'PACKET_VERSION' 'policy has no packet contract'
