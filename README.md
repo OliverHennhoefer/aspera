@@ -1,11 +1,11 @@
 # Aspera Orchestrator
 
-Aspera reduces premium parent-model quota without trading away correctness. Sol settles architecture and acceptance, Luna Max performs most bounded implementation, and Spark is available only for naturally mechanical work that already fits the same compact capsule.
+Aspera aims to reduce premium parent-model quota with a very small routing heuristic. Sol keeps tiny or reasoning-intertwined work; native Luna Max owns coherent implementation units.
 
 ## Requirements
 
-- A current Codex CLI or IDE with plugins, custom agents, subagents, and hooks.
-- Bash 3.2+, Python 3.11+, and access to the models selected by the installed profile.
+- A current Codex CLI or IDE with plugins and model-selectable subagents.
+- Bash 3.2+, Python 3.11+, and access to native Luna and Terra subagents.
 
 ## Install or update
 
@@ -13,65 +13,40 @@ Aspera reduces premium parent-model quota without trading away correctness. Sol 
 ./aspera install --workspace /absolute/path/to/project
 ```
 
-GitHub `v*` releases identify stable versions only; update with `git pull` in this checkout and then run the command above.
-
-Fresh installs use the `adaptive` profile:
+GitHub `v*` releases identify stable versions only; update with `git pull` in this checkout and then run the command above. Plugin content changes require a manifest version bump; verified same-version installs are a safe no-op.
 
 | Responsibility | Model |
 |---|---|
 | Architecture, routing, acceptance | Session parent (normally Sol-high) |
-| Primary implementation and repository exploration | Luna Max |
-| Conditional mechanical implementation | Spark `xhigh` |
-| High-risk review | Terra `high` |
+| Coherent implementation, including needed exploration | Native Luna Max `max` |
+| Concrete high-risk diff review | Native Terra `high` |
 
-Use Luna without the conditional Spark role:
+Existing valid 0.1–0.4.1 installations update transactionally. Start a new Codex session after install or update.
 
-```bash
-./aspera install --workspace /absolute/path/to/project --profile luna
-```
+The installer manages one compact project policy and a state receipt—no custom role files. It removes obsolete roles, guards, and protocols during migration, including legacy Spark installations. It refuses unmanaged conflicts, drift, and unsafe symlinks; `--force` backs up approved drift before complete reconciliation. It also installs or updates the checkout plugin through supported Codex commands and verifies its version, source, and enabled state.
 
-The legacy `--profile spark` name is accepted for one release as an alias for `adaptive`. Existing valid 0.1–0.4.0 installations update transactionally. Start a new Codex session after install or update.
-
-The installer manages role files, packet-v3 guard, lazy protocol, compact project policy, and state receipt. It refuses unmanaged conflicts, drift, and unsafe symlinks; `--force` backs up approved drift before complete reconciliation. It also refreshes the checkout plugin through supported Codex commands and verifies its version, source, and enabled state.
-
-Updates preserve the installed profile and policy when their flags are omitted. Use `--no-policy` to remove automatic repository activation and `--install-policy` to restore it. These options are mutually exclusive.
+Updates preserve the installed policy when its flags are omitted. Use `--no-policy` to remove automatic repository activation and `--install-policy` to restore it. These options are mutually exclusive.
 
 There is no setup interview, automatic doctor, model probe, nested Codex process, runtime smoke, or other activation step.
 
 ## Runtime routing
 
-There are no public orchestration modes. With policy installed, Sol performs targeted orientation and chooses:
+There are no public orchestration modes or routing packets. Sol chooses naturally:
 
-- continue in Sol when delegation has negative value or quality risk;
-- Luna Max for normal bounded implementation;
-- Spark only when the unchanged Luna-ready capsule passes every strict mechanical-work gate.
+- stay in Sol when architecture or scope is unsettled, coding decisions remain intertwined with reasoning, or one focused edit-and-test cycle should finish the task;
+- otherwise send one coherent unit end-to-end to native Luna Max.
 
-Spark is never a reason to add planning, context, or another handoff. It gets one attempt. Quota, capacity, routing, or role unavailability immediately retargets the unchanged capsule to Luna and never blocks the goal; the fallback is reported explicitly. A concrete implementation failure may also be upgraded once to Luna. Workers run focused checks, and Sol inspects the diff and reruns the decisive command.
-
-Detailed routing, packet v3, limits, handoff, and failure rules are installed lazily at:
-
-```text
-.codex/aspera-orchestrator/protocol.md
-```
-
-If Luna is absent, reinstall and start a new session. Spark absence uses the explicit automatic Luna fallback. Aspera never silently substitutes a model.
+The brief contains only outcome, relevant constraints, scope, and acceptance. Aspera never pre-reads, enumerates files, or adds context merely to delegate. Workers run focused checks, and Sol inspects the diff and reruns the decisive command.
 
 ## Managed project files
 
-Adaptive installs create:
+Installs create only:
 
 ```text
-.codex/agents/aspera-explorer.toml
-.codex/agents/aspera-luna-worker.toml
-.codex/agents/aspera-spark-worker.toml
-.codex/agents/aspera-researcher.toml
-.codex/agents/aspera-reviewer.toml
-.codex/aspera-orchestrator/worker_guard.py
-.codex/aspera-orchestrator/protocol.md
 .codex/aspera-orchestrator/state.json
 ```
 
-The Luna profile omits `aspera-spark-worker.toml`. Managed files may be committed or ignored. Do not commit `.codex/aspera-orchestrator/backups/`.
+The optional managed `AGENTS.md` block activates routing automatically. Managed files may be committed or ignored. Do not commit `.codex/aspera-orchestrator/backups/`.
 
 ## Lifecycle
 
@@ -91,7 +66,7 @@ Both support `--dry-run` where applicable. Forced drift handling requires `--for
 
 ## Evaluation and development
 
-Spark remains a conditional lane until paired Sol/Luna/Spark evaluations meet the checked-in quota, quality, latency, and retry gates. Evaluation records include complete parent and worker consumption; production receipts contain lifecycle metadata only, never prompts, code, or tool output.
+Compare 0.5 against 0.4.1 and direct Sol on frozen tasks. Quality must remain equal, routing tokens must fall, and no-fit overhead must remain at or below 5%.
 
 Aspera itself is always developed parent-direct:
 

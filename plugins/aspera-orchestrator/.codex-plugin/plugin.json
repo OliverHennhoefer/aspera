@@ -1,7 +1,7 @@
 {
   "name": "aspera-orchestrator",
-  "version": "0.4.1",
-  "description": "Luna-first Codex orchestration with a conditional bounded Spark lane.",
+  "version": "0.5.0",
+  "description": "Ultra-light native Luna Max Codex orchestration.",
   "author": {
     "name": "Oliver Hennhöfer",
     "url": "https://github.com/OliverHennhoefer/aspera"
@@ -20,7 +20,7 @@
   "interface": {
     "displayName": "Aspera Orchestrator",
     "shortDescription": "Quota-efficient Luna-first orchestration",
-    "longDescription": "Route bounded implementation to Luna Max, with Spark used only for naturally mechanical packets that pass strict value and context gates.",
+    "longDescription": "Use a compact natural heuristic to keep small or intertwined work in Sol and route coherent implementation units to native Luna Max.",
     "developerName": "Oliver Hennhöfer",
     "category": "Developer Tools",
     "capabilities": [
@@ -31,8 +31,7 @@
     "websiteURL": "https://github.com/OliverHennhoefer/aspera",
     "defaultPrompt": [
       "Start a bounded coding task with $orchestrate.",
-      "Use Luna Max as the default worker.",
-      "Select Spark only when the unchanged capsule passes its strict gate."
+      "Use native Luna Max for coherent implementation units."
     ]
   }
 }

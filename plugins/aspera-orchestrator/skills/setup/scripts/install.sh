@@ -7,18 +7,16 @@ source "${SCRIPT_DIR}/common.sh"
 
 TARGET="$(pwd)"
 TARGET_SET=0
-PROFILE=''
 POLICY_MODE='preserve'
 DRY_RUN=0
 FORCE=0
 
 usage() {
   cat <<'USAGE'
-Usage: install.sh [--workspace PATH] [--profile adaptive|luna] [--install-policy|--no-policy] [--dry-run] [--force] [PATH]
+Usage: install.sh [--workspace PATH] [--install-policy|--no-policy] [--dry-run] [--force] [PATH]
 
 Installs or updates an Aspera project in one idempotent operation. Fresh installs
-default to the adaptive Luna-first profile with managed project policy. The legacy
-profile name spark is accepted as a one-release alias for adaptive.
+use native Luna Max with managed project policy.
 USAGE
 }
 
@@ -28,11 +26,6 @@ while [ "$#" -gt 0 ]; do
       [ "$#" -ge 2 ] || aspera_err '--workspace requires a path'
       TARGET="$2"
       TARGET_SET=1
-      shift 2
-      ;;
-    --profile)
-      [ "$#" -ge 2 ] || aspera_err '--profile requires adaptive or luna'
-      PROFILE="$2"
       shift 2
       ;;
     --install-policy)
@@ -89,18 +82,6 @@ if [ -e "$asp_state_file" ] || [ -L "$asp_state_file" ]; then
   STATE_POLICY="$(asp_state_get "$asp_state_file" policy_installed)"
 fi
 
-if [ -z "$PROFILE" ]; then
-  if [ "$HAS_STATE" -eq 1 ]; then
-    PROFILE="$STATE_PROFILE"
-    [ "$PROFILE" != 'spark' ] || PROFILE='adaptive'
-  else
-    PROFILE='adaptive'
-  fi
-fi
-PROFILE="$(aspera_normalize_profile "$PROFILE")"
-aspera_validate_profile "$PROFILE"
-asp_set_profile_contract "$PROFILE"
-
 if [ "$HAS_STATE" -eq 1 ]; then
   DESIRED_POLICY="$STATE_POLICY"
 else
@@ -114,34 +95,6 @@ esac
 POLICY_SCAN="$(asp_policy_scan "$ASPERA_POLICY_FILE")"
 [ "$POLICY_SCAN" != 'invalid' ] || aspera_err "policy markers are invalid in $ASPERA_POLICY_FILE"
 asp_validate_policy_assets
-
-EXPLORER_SRC="$(asp_profile_asset_path "$PROFILE" explorer)"
-LUNA_WORKER_SRC="$(asp_profile_asset_path "$PROFILE" luna-worker)"
-SPARK_WORKER_SRC="$(asp_profile_asset_path "$PROFILE" spark-worker)"
-RESEARCHER_SRC="$(asp_profile_asset_path "$PROFILE" researcher)"
-REVIEWER_SRC="$(asp_profile_asset_path "$PROFILE" reviewer)"
-EXPLORER_HASH="$(asp_validate_asset_file "$PROFILE" explorer "$ASPERA_MODEL_LUNA")"
-LUNA_WORKER_HASH="$(asp_validate_asset_file "$PROFILE" luna-worker "$ASPERA_MODEL_LUNA")"
-SPARK_WORKER_HASH=''
-if [ "$PROFILE" = 'adaptive' ]; then
-  SPARK_WORKER_HASH="$(asp_validate_asset_file "$PROFILE" spark-worker "$ASPERA_MODEL_SPARK")"
-fi
-RESEARCHER_HASH="$(asp_validate_asset_file "$PROFILE" researcher "$ASPERA_MODEL_RESEARCHER")"
-REVIEWER_HASH="$(asp_validate_asset_file "$PROFILE" reviewer "$ASPERA_MODEL_REVIEWER")"
-GUARD_HASH="$(asp_validate_guard_asset)"
-PROTOCOL_HASH="$(aspera_hash_file "$ASPERA_PROTOCOL_SRC")"
-
-DESIRED_PAIRS=(
-  ".codex/agents/aspera-explorer.toml:$EXPLORER_HASH"
-  ".codex/agents/aspera-luna-worker.toml:$LUNA_WORKER_HASH"
-  ".codex/agents/aspera-researcher.toml:$RESEARCHER_HASH"
-  ".codex/agents/aspera-reviewer.toml:$REVIEWER_HASH"
-  ".codex/aspera-orchestrator/worker_guard.py:$GUARD_HASH"
-  ".codex/aspera-orchestrator/protocol.md:$PROTOCOL_HASH"
-)
-if [ "$PROFILE" = 'adaptive' ]; then
-  DESIRED_PAIRS+=(".codex/agents/aspera-spark-worker.toml:$SPARK_WORKER_HASH")
-fi
 
 DRIFT=0
 for rel in "${ASPERA_ALL_MANAGED_FILES[@]}"; do
@@ -181,16 +134,9 @@ if [ "$DESIRED_POLICY" -eq 1 ]; then
 fi
 
 UPDATE_NEEDED=0
-if [ "$HAS_STATE" -eq 0 ] || [ "$STATE_SCHEMA" != "$ASPERA_STATE_SCHEMA" ] || [ "$STATE_PLUGIN_VERSION" != "$ASPERA_PLUGIN_VERSION" ] || [ "$STATE_PROFILE" != "$PROFILE" ] || [ "$STATE_POLICY" -ne "$DESIRED_POLICY" ]; then
+if [ "$HAS_STATE" -eq 0 ] || [ "$STATE_SCHEMA" != "$ASPERA_STATE_SCHEMA" ] || [ "$STATE_PLUGIN_VERSION" != "$ASPERA_PLUGIN_VERSION" ] || [ "$STATE_PROFILE" != 'luna' ] || [ "$STATE_POLICY" -ne "$DESIRED_POLICY" ]; then
   UPDATE_NEEDED=1
 fi
-for pair in "${DESIRED_PAIRS[@]}"; do
-  rel="${pair%%:*}"
-  desired_hash="${pair#*:}"
-  if [ "$HAS_STATE" -eq 0 ] || [ "$(asp_state_get_hash "$asp_state_file" "$rel")" != "$desired_hash" ]; then
-    UPDATE_NEEDED=1
-  fi
-done
 if [ "$DESIRED_POLICY" -eq 1 ] && { [ "$POLICY_SCAN" != 'ok' ] || [ "$(asp_policy_hash "$ASPERA_POLICY_FILE")" != "$DESIRED_POLICY_HASH" ]; }; then
   UPDATE_NEEDED=1
 fi
@@ -203,12 +149,12 @@ fi
 
 if [ "$UPDATE_NEEDED" -eq 0 ]; then
   asp_verify_installation "$ASPERA_TARGET" || aspera_err 'post-install verification failed for the existing installation'
-  aspera_info "Aspera $ASPERA_PLUGIN_VERSION is already current for $ASPERA_TARGET ($PROFILE)."
+  aspera_info "Aspera $ASPERA_PLUGIN_VERSION is already current for $ASPERA_TARGET (Luna Max)."
   exit 0
 fi
 
 if [ "$DRY_RUN" -eq 1 ]; then
-  aspera_info "DRY-RUN: would reconcile Aspera $ASPERA_PLUGIN_VERSION for $ASPERA_TARGET ($PROFILE, policy=$DESIRED_POLICY)"
+  aspera_info "DRY-RUN: would reconcile Aspera $ASPERA_PLUGIN_VERSION for $ASPERA_TARGET (Luna Max, policy=$DESIRED_POLICY)"
   [ "$STATE_SCHEMA" != '' ] && [ "$STATE_SCHEMA" != "$ASPERA_STATE_SCHEMA" ] && aspera_info "DRY-RUN: would migrate state schema $STATE_SCHEMA to $ASPERA_STATE_SCHEMA"
   [ "$STATE_PLUGIN_VERSION" != '' ] && [ "$STATE_PLUGIN_VERSION" != "$ASPERA_PLUGIN_VERSION" ] && aspera_info "DRY-RUN: would update plugin receipt $STATE_PLUGIN_VERSION to $ASPERA_PLUGIN_VERSION"
   [ "$DRIFT" -eq 0 ] || aspera_info 'DRY-RUN: would back up and replace approved drift'
@@ -263,22 +209,6 @@ done
 
 aspera_capture_destination_snapshot "$ASPERA_TARGET" "$STAGE_ROOT/snapshot-before"
 
-stage_copy() {
-  local source="$1"
-  local rel="$2"
-  mkdir -p "$(dirname "$STAGE_ROOT/files/$rel")"
-  cp "$source" "$STAGE_ROOT/files/$rel"
-}
-stage_copy "$EXPLORER_SRC" '.codex/agents/aspera-explorer.toml'
-stage_copy "$LUNA_WORKER_SRC" '.codex/agents/aspera-luna-worker.toml'
-if [ "$PROFILE" = 'adaptive' ]; then
-  stage_copy "$SPARK_WORKER_SRC" '.codex/agents/aspera-spark-worker.toml'
-fi
-stage_copy "$RESEARCHER_SRC" '.codex/agents/aspera-researcher.toml'
-stage_copy "$REVIEWER_SRC" '.codex/agents/aspera-reviewer.toml'
-stage_copy "$ASPERA_GUARD_SRC" '.codex/aspera-orchestrator/worker_guard.py'
-stage_copy "$ASPERA_PROTOCOL_SRC" '.codex/aspera-orchestrator/protocol.md'
-
 if [ "$DESIRED_POLICY" -eq 1 ]; then
   asp_render_policy "$ASPERA_POLICY_FILE" "$ASPERA_POLICY_SRC" "$STAGE_ROOT/files/$ASPERA_AGENTS_FILE_REL"
   POLICY_STATE_HASH="$(asp_policy_hash "$STAGE_ROOT/files/$ASPERA_AGENTS_FILE_REL")"
@@ -288,31 +218,19 @@ else
 fi
 
 mkdir -p "$(dirname "$STAGE_ROOT/files/$ASPERA_STATE_FILE_REL")"
-python3 - "$STAGE_ROOT/files/$ASPERA_STATE_FILE_REL" "$PROFILE" "$EXPLORER_HASH" "$LUNA_WORKER_HASH" "$SPARK_WORKER_HASH" "$RESEARCHER_HASH" "$REVIEWER_HASH" "$GUARD_HASH" "$PROTOCOL_HASH" "$DESIRED_POLICY" "$POLICY_STATE_HASH" <<'PY'
+python3 - "$STAGE_ROOT/files/$ASPERA_STATE_FILE_REL" "$DESIRED_POLICY" "$POLICY_STATE_HASH" <<'PY'
 import json
 import pathlib
 import sys
 target = pathlib.Path(sys.argv[1])
-profile = sys.argv[2]
-managed = {
-    '.codex/agents/aspera-explorer.toml': sys.argv[3],
-    '.codex/agents/aspera-luna-worker.toml': sys.argv[4],
-    '.codex/agents/aspera-researcher.toml': sys.argv[6],
-    '.codex/agents/aspera-reviewer.toml': sys.argv[7],
-    '.codex/aspera-orchestrator/worker_guard.py': sys.argv[8],
-    '.codex/aspera-orchestrator/protocol.md': sys.argv[9],
-}
-if profile == 'adaptive':
-    managed['.codex/agents/aspera-spark-worker.toml'] = sys.argv[5]
 payload = {
-    'schema_version': 4,
+    'schema_version': 5,
     'plugin': 'aspera-orchestrator',
-    'plugin_version': '0.4.1',
-    'profile': profile,
-    'managed_files': managed,
-    'guard_hash': sys.argv[8],
-    'policy_installed': bool(int(sys.argv[10])),
-    'policy_hash': sys.argv[11] if bool(int(sys.argv[10])) else '',
+    'plugin_version': '0.5.0',
+    'profile': 'luna',
+    'managed_files': {},
+    'policy_installed': bool(int(sys.argv[2])),
+    'policy_hash': sys.argv[3] if bool(int(sys.argv[2])) else '',
 }
 target.write_text(json.dumps(payload, indent=2) + '\n', encoding='utf-8')
 PY
@@ -367,4 +285,4 @@ asp_verify_installation "$ASPERA_TARGET" || aspera_err 'post-install exactness v
 TRANSACTION_ACTIVE=0
 trap - EXIT INT TERM
 rm -rf "$STAGE_ROOT"
-aspera_info "Installed Aspera $ASPERA_PLUGIN_VERSION for $ASPERA_TARGET ($PROFILE). Start a new Codex session."
+aspera_info "Installed Aspera $ASPERA_PLUGIN_VERSION for $ASPERA_TARGET (Luna Max). Start a new Codex session."

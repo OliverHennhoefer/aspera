@@ -1,15 +1,6 @@
 {
   "models": [
     {
-      "slug": "gpt-5.3-codex-spark",
-      "supported_reasoning_levels": [
-        {
-          "name": "high",
-          "effort": "xhigh"
-        }
-      ]
-    },
-    {
       "slug": "gpt-5.6-luna",
       "supported_reasoning_levels": [
         {

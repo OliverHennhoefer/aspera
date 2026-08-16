@@ -1,9 +1,6 @@
 # Aspera routing policy
 
-- This repository opts into Aspera for implementation work. Explicit direct/no-delegation requests override it.
-- Sol owns architecture, task slicing, routing, and final acceptance. Continue in Sol when scope or design is unsettled, the edit is too small to amortize a handoff, or delegation would reduce quality.
-- Luna Max is the default worker for bounded implementation. Spark is optional and may receive the same Luna-ready capsule only when the checked-in protocol's strict Spark gate already holds; never do extra work to make a task Spark-compatible.
-- Before delegating, read `.codex/aspera-orchestrator/protocol.md`, validate packet v3, and use the exposed configured role. Spark quota, capacity, routing, or role unavailability is never a blocker: do not retry Spark or count a blocked goal turn; retarget the unchanged capsule to Luna and report the fallback. Only Luna unavailability stops the lane. Never substitute silently.
-- Use one precise Luna explorer only when it prevents equivalent Sol inspection. Use Terra pre-edit only for destructive, security, exposure, or irreversible risk; otherwise review risky concrete diffs.
-- Workers run focused checks; Sol reruns the decisive acceptance command. Shared-scope edits are serialized; at most two genuinely disjoint workers may run in parallel. No recursive delegation.
-- Do not apply Aspera to reviews, explanations, status, setup, diagnosis, installation, uninstall, or development of Aspera itself.
+- This repository uses Aspera for implementation unless the user requests direct/no-delegation work. Do not apply it to review, explanation, status, setup, diagnosis, lifecycle work, or Aspera itself.
+- Stay in Sol when architecture or scope is unsettled, coding decisions are intertwined with reasoning, or one focused edit-and-test cycle should finish the task. Otherwise give one coherent unit end-to-end to native `gpt-5.6-luna` at `max`, including necessary inspection and focused verification.
+- Send only a natural brief: outcome, relevant constraints, scope, and acceptance. Do not pre-read, split work, enumerate files, or add context merely to delegate. Default to one worker; use two only for plainly independent, disjoint units. Never delegate recursively.
+- Use native `gpt-5.6-terra` at `high` only to review a concrete security, destructive, exposure, or irreversible diff. Workers verify; Sol inspects the final diff and reruns the decisive check.

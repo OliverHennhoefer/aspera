@@ -1,6 +1,6 @@
 interface:
   display_name: "Orchestrate"
-  short_description: "Route bounded implementation to Luna or conditional Spark"
-  default_prompt: "Use $orchestrate for Luna-first implementation; Spark is conditional and availability failures immediately fall back to Luna."
+  short_description: "Route implementation through native Luna with minimal overhead"
+  default_prompt: "Use $orchestrate for ultra-light native Luna-first implementation routing."
 policy:
   allow_implicit_invocation: false

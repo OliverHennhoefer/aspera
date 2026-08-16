@@ -67,7 +67,7 @@ fi
 if [[ "${1:-}" == "plugin" && "${2:-}" == "add" && "${3:-}" == "aspera-orchestrator@aspera" ]]; then
   status="${ASPERA_STUB_PLUGIN_ADD_STATUS:-${ASPERA_STUB_PLUGIN_STATUS:-0}}"
   [ "$status" -eq 0 ] || exit "$status"
-  python3 - "$PLUGIN_STATE" "$(marketplace_root)" "${ASPERA_STUB_PLUGIN_ADD_VERSION:-0.4.1}" <<'PY'
+  python3 - "$PLUGIN_STATE" "$(marketplace_root)" "${ASPERA_STUB_PLUGIN_ADD_VERSION:-0.5.0}" <<'PY'
 import json
 import pathlib
 import sys

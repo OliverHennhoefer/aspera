@@ -29,7 +29,6 @@ run_step() {
 }
 
 run_step "shell-behavior-contracts" bash "${TESTS_DIR}/test_setup_contracts.sh"
-run_step "worker-guard" python3 "${TESTS_DIR}/test_worker_guard.py"
 run_step "static-validator" python3 "${TESTS_DIR}/static_validator.py"
 
 for entry in "${summary[@]}"; do

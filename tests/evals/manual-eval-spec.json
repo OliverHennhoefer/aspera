@@ -1,26 +1,15 @@
 {
   "artifact_type": "manual_evaluation_protocol",
-  "artifact_version": "3.0",
+  "artifact_version": "4.0",
   "package": {
     "root": "plugins/aspera-orchestrator",
-    "comparison": [
-      "sol-high-direct",
-      "sol-high-parent-to-luna-max",
-      "sol-high-parent-to-spark"
-    ],
-    "contracts": [
-      "routing",
-      "packet-v3",
-      "worker-lifecycle",
-      "setup-lifecycle",
-      "static-validation"
-    ]
+    "baselines": ["sol-high-direct", "aspera-0.4.1"],
+    "routes": ["sol", "native-luna-max", "native-terra-review"],
+    "contracts": ["natural-routing", "setup-lifecycle", "static-validation"]
   },
   "fixture_counts": {
     "no_fit_records": 5,
     "luna_core_records": 10,
-    "spark_incremental_records": 12,
-    "risk_records": 5,
     "positive_activation_records": 5,
     "negative_activation_records": 3
   },
@@ -29,98 +18,89 @@
       "id": "ASP-001",
       "category": "positive",
       "route": "luna",
-      "task_type": "contextual_implementation",
-      "delegation": ["aspera_luna_worker"],
+      "delegation": ["gpt-5.6-luna:max"],
+      "task_type": "coherent_implementation",
       "expected_activation": true,
-      "scenario": "Bounded multi-file implementation requiring repository pattern selection."
+      "scenario": "A coherent implementation unit needing repository inspection and focused verification."
     },
     {
       "id": "ASP-002",
       "category": "positive",
-      "route": "spark",
-      "task_type": "mechanical_implementation",
-      "delegation": ["aspera_spark_worker"],
+      "route": "sol",
+      "delegation": [],
+      "task_type": "one_cycle_implementation",
       "expected_activation": true,
-      "scenario": "Choice-free repetitive transformation whose unchanged Luna-ready capsule passes every Spark gate."
+      "scenario": "A task that should finish in one focused edit-and-test cycle."
     },
     {
       "id": "ASP-003",
       "category": "positive",
       "route": "sol",
-      "task_type": "no_fit_implementation",
       "delegation": [],
+      "task_type": "intertwined_implementation",
       "expected_activation": true,
-      "scenario": "Tiny edit where a handoff has negative expected value."
+      "scenario": "Architecture or coding decisions remain intertwined with parent reasoning."
     },
     {
       "id": "ASP-004",
       "category": "positive",
       "route": "luna_with_post_review",
-      "task_type": "schema_persistence_implementation",
-      "delegation": ["aspera_luna_worker", "aspera_reviewer"],
+      "delegation": ["gpt-5.6-luna:max", "gpt-5.6-terra:high"],
+      "task_type": "high_risk_implementation",
       "expected_activation": true,
-      "scenario": "Additive schema and write-path change with settled architecture and post-diff Terra review."
+      "scenario": "A coherent risky implementation followed by Terra review of its concrete diff."
     },
     {
       "id": "ASP-005",
       "category": "positive",
-      "route": "sol_with_pre_review_then_luna",
-      "task_type": "destructive_or_exposure_risk",
-      "delegation": ["aspera_reviewer", "aspera_luna_worker"],
+      "route": "two_luna",
+      "delegation": ["gpt-5.6-luna:max", "gpt-5.6-luna:max"],
+      "task_type": "disjoint_implementation",
       "expected_activation": true,
-      "scenario": "Destructive or exposure-sensitive change requiring pre-edit Terra risk review."
+      "scenario": "Two plainly independent implementation units with disjoint ownership."
     },
     {
       "id": "ASP-006",
       "category": "negative",
       "route": "excluded",
-      "task_type": "review_only",
       "delegation": null,
+      "task_type": "review_only",
       "expected_activation": false,
-      "scenario": "Request asks for code review without implementation."
+      "scenario": "The request asks only for review or explanation."
     },
     {
       "id": "ASP-007",
       "category": "negative",
       "route": "excluded",
-      "task_type": "setup_lifecycle",
       "delegation": null,
+      "task_type": "setup_lifecycle",
       "expected_activation": false,
-      "scenario": "Request asks for setup, diagnosis, installation, or uninstall."
+      "scenario": "The request asks for setup, diagnosis, installation, or uninstall."
     },
     {
       "id": "ASP-008",
       "category": "negative",
       "route": "excluded",
-      "task_type": "status_or_explanation",
       "delegation": null,
+      "task_type": "explicit_direct",
       "expected_activation": false,
-      "scenario": "Request asks only for explanation or status."
+      "scenario": "The user explicitly requests direct or no-delegation work."
     }
   ],
   "regression_scenarios": [
-    "tiny no-delegation edit",
-    "repetitive Spark transformation",
+    "tiny one-cycle edit",
+    "intertwined design and implementation",
     "context-heavy Luna implementation",
-    "broad release-goal slicing by Sol",
-    "schema and persistence change",
-    "destructive or exposure-sensitive change",
-    "insufficient worker context",
-    "late worker with no decisive evidence",
-    "partial edit",
-    "failed verification",
-    "interruption",
-    "single Luna repair",
-    "single explicit Spark-to-Luna upgrade",
-    "Spark startup quota exhaustion with immediate Luna fallback",
-    "Spark mid-turn capacity loss with partial worktree edits",
+    "mechanical Luna transformation",
+    "concrete high-risk diff review",
+    "two disjoint Luna units",
     "explicit direct request"
   ],
   "thresholds": {
     "quality": {
       "max_pass_deficit_vs_sol": 0,
+      "max_pass_deficit_vs_0_4_1": 0,
       "max_critical_regressions": 0,
-      "max_ownership_violations": 0,
       "max_silent_substitutions": 0
     },
     "luna_core": {
@@ -130,84 +110,41 @@
       "max_retry_rate": 0.1,
       "max_parent_intervention_rate": 0.1
     },
-    "spark_incremental": {
-      "max_median_total_quota_ratio_vs_sol": 0.6,
-      "max_median_total_quota_ratio_vs_luna": 0.8,
-      "max_parent_packet_quota_ratio_vs_luna": 1.05,
-      "max_median_latency_ratio_vs_luna": 1.25,
-      "max_median_latency_ratio_vs_sol": 2.0,
-      "max_block_rate": 0.05,
-      "max_upgrade_rate": 0.05,
-      "max_availability_retry_count": 0,
-      "max_spark_availability_block_rate": 0.0,
-      "max_parent_intervention_rate": 0.05,
-      "max_extra_context_construction_rate": 0.0,
-      "tuning_iterations_before_removal": 1
-    },
     "no_fit": {
       "max_quota_ratio_vs_direct_sol": 1.05
+    },
+    "routing_overhead": {
+      "max_median_tokens_vs_0_4_1": 1.0
     }
   },
   "recorded_metrics": {
     "sol_direct": {
-      "input_tokens": null,
-      "cached_input_tokens": null,
-      "output_tokens": null,
-      "reasoning_tokens": null,
-      "credits_spent": null,
+      "normalized_quota": null,
+      "wall_time_seconds": null,
+      "result": "pending"
+    },
+    "aspera_0_4_1": {
+      "routing_tokens": null,
       "normalized_quota": null,
       "wall_time_seconds": null,
       "result": "pending"
     },
     "luna_route": {
-      "parent_input_tokens": null,
-      "parent_reasoning_tokens": null,
-      "worker_input_tokens": null,
-      "worker_reasoning_tokens": null,
-      "credits_spent": null,
+      "parent_tokens": null,
+      "worker_tokens": null,
+      "brief_bytes": null,
       "normalized_quota": null,
       "wall_time_seconds": null,
-      "packet_bytes": null,
-      "decisive_seconds": null,
-      "first_edit_seconds": null,
-      "inspection_count": null,
-      "changed_path_count": null,
-      "verification_exits": null,
-      "guard_classification": null,
       "retries": null,
-      "parent_interventions": null,
-      "result": "pending"
-    },
-    "spark_route": {
-      "parent_input_tokens": null,
-      "parent_reasoning_tokens": null,
-      "worker_input_tokens": null,
-      "worker_reasoning_tokens": null,
-      "credits_spent": null,
-      "normalized_quota": null,
-      "wall_time_seconds": null,
-      "packet_bytes": null,
-      "decisive_seconds": null,
-      "first_edit_seconds": null,
-      "inspection_count": null,
-      "changed_path_count": null,
-      "verification_exits": null,
-      "guard_classification": null,
-      "blocked": null,
-      "upgraded_to_luna": null,
-      "availability_failure_reason": null,
-      "availability_retry_count": null,
-      "availability_fallback_to_luna": null,
-      "spark_availability_blocked_goal": null,
-      "extra_context_constructed": null,
       "parent_interventions": null,
       "result": "pending"
     }
   },
   "instructions": {
     "use_identical_frozen_repository_state": true,
-    "use_identical_capsule_for_luna_and_spark": true,
-    "include_parent_packet_construction": true,
+    "use_identical_user_prompt_across_routes": true,
+    "include_parent_routing_and_brief_construction": true,
+    "compare_routing_tokens_with_0_4_1": true,
     "do_not_emit_pass_or_fail_until_records_complete": true,
     "status": "pending"
   }

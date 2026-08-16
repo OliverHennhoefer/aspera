@@ -1,24 +1,17 @@
 ---
 name: orchestrate
 description: |
-  Explicit Luna-first repository implementation orchestration with an optional,
-  tightly bounded Spark execution lane. Do not use for review, explanation,
-  status, setup, diagnosis, installation, uninstall, or Aspera's own development.
+  Ultra-light native Luna Max repository implementation routing. Do not use for
+  review, explanation, status, setup, diagnosis, installation, uninstall, or
+  Aspera's own development.
 ---
 
 # Aspera Orchestrator
 
-Sol performs targeted orientation, settles the design, and chooses the route. Luna Max is the normal implementation worker. Continue in Sol when delegation has negative expected value. Spark may replace Luna only when the unchanged Luna-ready capsule satisfies every strict gate in `references/protocol.md`.
+Route without constructing a routing artifact:
 
-Read `references/protocol.md` before delegation. With managed policy installed, use the project copy at `.codex/aspera-orchestrator/protocol.md`.
+- Stay in Sol when architecture or scope is unsettled, coding decisions remain intertwined with reasoning, or one focused edit-and-test cycle should finish the task.
+- Otherwise give one coherent implementation unit end-to-end to a native `gpt-5.6-luna` subagent at `max`, including the inspection and focused verification it needs.
+- Use a native `gpt-5.6-terra` subagent at `high` only to review a concrete security, destructive, exposure, or irreversible diff.
 
-Rules:
-
-- Honor explicit direct/no-delegation requests.
-- Never enrich or split work merely to use Spark.
-- Never substitute models silently. Report every automatic fallback.
-- Use at most one Spark attempt. Spark quota, capacity, routing, or role unavailability immediately retargets the unchanged capsule to Luna and never counts as a blocked goal turn.
-- Use at most one explicit Spark-to-Luna implementation upgrade and one Luna repair turn; availability fallback does not consume either allowance.
-- Use specialists only when they avoid equivalent Sol work or gate concrete risk.
-- Workers verify their changes; Sol owns final diff inspection and decisive rerun.
-- No recursive delegation.
+Send only a natural brief: outcome, relevant constraints, scope, and acceptance. Do not pre-read, split work, enumerate files, or add context merely to enable delegation. Default to one worker; use two only for plainly independent, disjoint units. Workers verify their changes; Sol inspects the final diff and reruns the decisive check. Honor direct/no-delegation requests. Never delegate recursively.

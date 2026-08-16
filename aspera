@@ -10,11 +10,11 @@ PLUGIN_MANIFEST="$ROOT/plugins/aspera-orchestrator/.codex-plugin/plugin.json"
 usage() {
   cat <<'USAGE'
 Usage:
-  aspera install --workspace PATH [--profile adaptive|luna] [--install-policy|--no-policy] [--force] [--dry-run]
-  aspera diagnose --workspace PATH [--profile adaptive|luna]
+  aspera install --workspace PATH [--install-policy|--no-policy] [--force] [--dry-run]
+  aspera diagnose --workspace PATH
   aspera uninstall --workspace PATH [--force] [--dry-run]
 
-Install is also update: it refreshes the plugin from this checkout, reconciles
+Install is also update: it installs or updates the plugin from this checkout, reconciles
 the project, migrates supported state, and verifies the result. Start a new
 Codex session after it succeeds; no doctor step is required.
 USAGE
@@ -29,7 +29,7 @@ refresh_plugin() {
   }
 
   local temp_dir list_file marketplace_root manifest_version installed_version
-  local marketplace_added=0 prior_removed=0
+  local marketplace_added=0
   temp_dir="$(mktemp -d)"
   list_file="$temp_dir/marketplaces.json"
   cleanup_refresh() { rm -rf "$temp_dir"; }
@@ -174,24 +174,18 @@ PY
   }
 
   if [ "$installed_version" = "$manifest_version" ]; then
-    (cd "$temp_dir" && "$codex_bin" plugin remove "$PLUGIN_ID" --json > "$temp_dir/plugin-remove.json") || {
-      printf 'ERROR: failed to remove the same-version Aspera plugin before refresh\n' >&2
+    inspect_plugin_list "$temp_dir/plugins-before.json" after >/dev/null || {
+      printf 'ERROR: installed Aspera plugin is disabled; enable it before installation\n' >&2
       exit 1
     }
-    prior_removed=1
-    validate_json "$temp_dir/plugin-remove.json" || {
-      printf 'ERROR: Codex returned invalid plugin removal metadata\n' >&2
-      exit 1
-    }
+    trap - EXIT INT TERM
+    cleanup_refresh
+    return 0
   fi
 
   if ! (cd "$temp_dir" && "$codex_bin" plugin add "$PLUGIN_ID" --json > "$temp_dir/plugin-add.json"); then
     cleanup_failed_first_install
-    if [ "$prior_removed" -eq 1 ]; then
-      printf 'ERROR: failed to reinstall %s; the prior same-version plugin was removed and project files were not changed\n' "$PLUGIN_ID" >&2
-    else
-      printf 'ERROR: failed to install or refresh %s; project files were not changed\n' "$PLUGIN_ID" >&2
-    fi
+    printf 'ERROR: failed to install or update %s; project files were not changed\n' "$PLUGIN_ID" >&2
     exit 1
   fi
   validate_json "$temp_dir/plugin-add.json" || {
